@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title data-i18n="app_name">Système de Pointage Facial</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👤</text></svg>">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <div class="logo">FaceAttendance</div>
+            <div class="top-nav">
+                <a href="index.html" data-i18n="nav_attendance" onclick="clearSessionBeforeLeave()">Pointage</a>
+                <a href="register.html" class="active" data-i18n="nav_register">Enregistrement</a>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <div class="language-switcher">
+                <button class="lang-btn" onclick="setLanguage('fr')" data-lang="fr">FR</button>
+                <button class="lang-btn" onclick="setLanguage('zh')" data-lang="zh">中文</button>
+                <button class="lang-btn" onclick="setLanguage('en')" data-lang="en">EN</button>
+            </div>
+            
+            <!-- 登录后显示的用户信息 -->
+            <div id="userInfo" class="user-info" style="display: none;">
+                <div class="user-detail">
+                    <div class="user-avatar-small" id="headerUserAvatar"></div>
+                    <span class="user-name-small" id="headerUserName"></span>
+                </div>
+                <button class="logout-btn" onclick="logout()" title="Déconnexion">🚪</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 登录模态框（未登录时显示） -->
+    <div id="authOverlay" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-icon">🔒</div>
+            <h2 data-i18n="login_title">Connexion Administrateur</h2>
+            <p data-i18n="login_subtitle">Veuillez saisir vos identifiants</p>
+            
+            <input type="text" id="loginUsername" placeholder="Nom d'utilisateur" 
+                   style="width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            
+            <input type="password" id="loginPassword" placeholder="Mot de passe" 
+                   style="width: 100%; padding: 12px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 8px;">
+            
+            <button class="modal-btn modal-btn-primary" onclick="handleLogin()" style="width: 100%; margin: 20px 0 10px;">
+                <span data-i18n="login_button">Se connecter</span>
+            </button>
+            
+            <div id="loginError" style="color: #f56565; font-size: 14px; text-align: center;"></div>
+        </div>
+    </div>
+
+    <div class="header">
+        <h1 data-i18n="register_title">Enregistrement Facial</h1>
+        <p data-i18n="register_subtitle">Administrateur · Enregistrer les visages</p>
+    </div>
+
+    <div class="container register-container">
+        <!-- 统计卡片 -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalCount">0</div>
+                <div class="stat-label" data-i18n="total_employees">Total</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="registeredCount">0</div>
+                <div class="stat-label" data-i18n="registered">Enregistrés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="unregisteredCount">0</div>
+                <div class="stat-label" data-i18n="unregistered">Non enreg.</div>
+            </div>
+        </div>
+
+        <!-- 搜索框 -->
+        <div class="search-box">
+            <input type="text" class="search-input" id="searchInput" 
+                   data-i18n="search_placeholder" placeholder="Rechercher un employé..." 
+                   oninput="filterUsers()" disabled>
+        </div>
+
+        <!-- 员工列表 -->
+        <div id="userList" class="user-list">
+            <div class="empty" data-i18n="loading">Chargement...</div>
+        </div>
+
+        <!-- 摄像头区域 -->
+        <div class="video-container small" style="display: none;">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="overlay" class="overlay"></canvas>
+        </div>
+
+        <!-- 操作按钮组 -->
+        <div class="action-group">
+            <button id="registerBtn" class="btn-save" onclick="registerFace()" disabled>
+                <span>📸</span> <span data-i18n="register_button">Enregistrer</span>
+            </button>
+            <button class="btn-reset" onclick="resetRegistration()" disabled>
+                <span>↺</span> <span data-i18n="reset">Réinitialiser</span>
+            </button>
+        </div>
+
+        <!-- 提示信息 -->
+        <div class="hint">
+            <span>💡 <span data-i18n="face_hint">Assurez un bon éclairage, face à la caméra</span></span>
+        </div>
+
+        <!-- 状态提示 -->
+        <div id="status" class="status"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@latest/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="languages.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // 页面加载时检查session - 但只用于当前页面
+        document.addEventListener('DOMContentLoaded', function() {
+            // 从sessionStorage检查（不用localStorage）
+            const session = loadSessionFromSessionOnly();
+            if (session) {
+                // 已登录，隐藏登录框，显示用户信息
+                document.getElementById('authOverlay').style.display = 'none';
+                document.getElementById('userInfo').style.display = 'flex';
+                document.getElementById('headerUserName').textContent = session.username;
+                document.getElementById('headerUserAvatar').textContent = session.username.charAt(0).toUpperCase();
+                
+                // 启用输入和按钮
+                document.getElementById('searchInput').disabled = false;
+                document.querySelectorAll('.action-group button').forEach(btn => btn.disabled = false);
+                
+                // 加载数据并启动摄像头
+                loadAllUsers();
+                startCamera();
+            } else {
+                // 未登录，显示登录框
+                document.getElementById('authOverlay').style.display = 'flex';
+                document.getElementById('userInfo').style.display = 'none';
+                
+                // 禁用输入和按钮
+                document.getElementById('searchInput').disabled = true;
+                document.querySelectorAll('.action-group button').forEach(btn => btn.disabled = true);
+            }
+        });
+
+        // 只从sessionStorage加载session（页面关闭就消失）
+        function loadSessionFromSessionOnly() {
+            const data = sessionStorage.getItem('session');
+            return data ? JSON.parse(data) : null;
+        }
+
+        // 离开页面时清除session
+        function clearSessionBeforeLeave() {
+            sessionStorage.removeItem('session');
+            // 可以添加一个小延迟确保清除完成
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 50);
+            return false; // 阻止默认跳转
+        }
+
+        // 处理登录 - 只使用sessionStorage
+        async function handleLogin() {
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
+            const errorDiv = document.getElementById('loginError');
+            
+            if (!username || !password) {
+                errorDiv.textContent = translations[currentLanguage]?.login_error || 'Veuillez saisir vos identifiants';
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('username', username)
+                    .eq('password', password);
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    const user = data[0];
+                    
+                    // 只允许管理员和经理登录
+                    if (user.user_type === 'admin' || user.user_type === 'manager') {
+                        // 只保存到sessionStorage，不保存到localStorage
+                        const session = {
+                            id: user.id,
+                            username: user.username,
+                            userType: user.user_type
+                        };
+                        sessionStorage.setItem('session', JSON.stringify(session));
+                        
+                        // 重新加载页面状态
+                        document.getElementById('authOverlay').style.display = 'none';
+                        document.getElementById('userInfo').style.display = 'flex';
+                        document.getElementById('headerUserName').textContent = user.username;
+                        document.getElementById('headerUserAvatar').textContent = user.username.charAt(0).toUpperCase();
+                        
+                        document.getElementById('searchInput').disabled = false;
+                        document.querySelectorAll('.action-group button').forEach(btn => btn.disabled = false);
+                        
+                        await loadAllUsers();
+                        startCamera();
+                        
+                        errorDiv.textContent = '';
+                    } else {
+                        errorDiv.textContent = translations[currentLanguage]?.login_error || 'Accès non autorisé';
+                    }
+                } else {
+                    errorDiv.textContent = translations[currentLanguage]?.login_error || 'Identifiants incorrects';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = translations[currentLanguage]?.login_error || 'Erreur de connexion';
+            }
+        }
+
+        // 退出登录
+        function logout() {
+            sessionStorage.removeItem('session');
+            // 停止摄像头
+            if (typeof stopCamera === 'function') {
+                stopCamera();
+            }
+            // 刷新页面，重新显示登录框
+            window.location.reload();
+        }
+
+        // 重写导航链接点击事件
+        document.querySelectorAll('.top-nav a').forEach(link => {
+            link.addEventListener('click', function(e) {
+                if (this.getAttribute('href') !== 'register.html') {
+                    // 如果不是留在录入页面，清除session
+                    sessionStorage.removeItem('session');
+                }
+            });
+        });
+
+        // 监听页面隐藏/卸载事件
+        window.addEventListener('pagehide', function() {
+            sessionStorage.removeItem('session');
+        });
+
+        window.addEventListener('beforeunload', function() {
+            sessionStorage.removeItem('session');
+        });
+    </script>
+</body>
+</html>
