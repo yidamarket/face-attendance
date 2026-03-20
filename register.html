@@ -11,7 +11,7 @@
     <!-- 顶部导航栏 -->
     <div class="top-bar">
         <div class="top-bar-left">
-            <div class="logo">FaceAttendance</div>
+            <div class="logo" data-i18n="app_name">FaceAttendance</div>
             <div class="top-nav">
                 <a href="index.html" data-i18n="nav_attendance" onclick="clearSessionBeforeLeave()">Pointage</a>
                 <a href="register.html" class="active" data-i18n="nav_register">Enregistrement</a>
@@ -42,10 +42,10 @@
             <h2 data-i18n="login_title">Connexion Administrateur</h2>
             <p data-i18n="login_subtitle">Veuillez saisir vos identifiants</p>
             
-            <input type="text" id="loginUsername" placeholder="Nom d'utilisateur" 
+            <input type="text" id="loginUsername" placeholder="" data-i18n="username" 
                    style="width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #e2e8f0; border-radius: 8px;">
             
-            <input type="password" id="loginPassword" placeholder="Mot de passe" 
+            <input type="password" id="loginPassword" placeholder="" data-i18n="password" 
                    style="width: 100%; padding: 12px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 8px;">
             
             <button class="modal-btn modal-btn-primary" onclick="handleLogin()" style="width: 100%; margin: 20px 0 10px;">
@@ -159,11 +159,10 @@
         // 离开页面时清除session
         function clearSessionBeforeLeave() {
             sessionStorage.removeItem('session');
-            // 可以添加一个小延迟确保清除完成
             setTimeout(() => {
                 window.location.href = 'index.html';
             }, 50);
-            return false; // 阻止默认跳转
+            return false;
         }
 
         // 处理登录 - 只使用sessionStorage
@@ -173,7 +172,7 @@
             const errorDiv = document.getElementById('loginError');
             
             if (!username || !password) {
-                errorDiv.textContent = translations[currentLanguage]?.login_error || 'Veuillez saisir vos identifiants';
+                errorDiv.textContent = t('login_error');
                 return;
             }
             
@@ -189,9 +188,7 @@
                 if (data && data.length > 0) {
                     const user = data[0];
                     
-                    // 只允许管理员和经理登录
                     if (user.user_type === 'admin' || user.user_type === 'manager') {
-                        // 只保存到sessionStorage，不保存到localStorage
                         const session = {
                             id: user.id,
                             username: user.username,
@@ -199,7 +196,6 @@
                         };
                         sessionStorage.setItem('session', JSON.stringify(session));
                         
-                        // 重新加载页面状态
                         document.getElementById('authOverlay').style.display = 'none';
                         document.getElementById('userInfo').style.display = 'flex';
                         document.getElementById('headerUserName').textContent = user.username;
@@ -212,26 +208,25 @@
                         startCamera();
                         
                         errorDiv.textContent = '';
+                        showStatus(t('login_success'), 'success');
                     } else {
-                        errorDiv.textContent = translations[currentLanguage]?.login_error || 'Accès non autorisé';
+                        errorDiv.textContent = t('login_error');
                     }
                 } else {
-                    errorDiv.textContent = translations[currentLanguage]?.login_error || 'Identifiants incorrects';
+                    errorDiv.textContent = t('login_error');
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                errorDiv.textContent = translations[currentLanguage]?.login_error || 'Erreur de connexion';
+                errorDiv.textContent = t('login_error');
             }
         }
 
         // 退出登录
         function logout() {
             sessionStorage.removeItem('session');
-            // 停止摄像头
             if (typeof stopCamera === 'function') {
                 stopCamera();
             }
-            // 刷新页面，重新显示登录框
             window.location.reload();
         }
 
@@ -239,13 +234,11 @@
         document.querySelectorAll('.top-nav a').forEach(link => {
             link.addEventListener('click', function(e) {
                 if (this.getAttribute('href') !== 'register.html') {
-                    // 如果不是留在录入页面，清除session
                     sessionStorage.removeItem('session');
                 }
             });
         });
 
-        // 监听页面隐藏/卸载事件
         window.addEventListener('pagehide', function() {
             sessionStorage.removeItem('session');
         });
