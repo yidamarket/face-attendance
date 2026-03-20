@@ -173,7 +173,7 @@ function stopCamera() {
     
     updateGlobalVars();
 }
-// 关键点检测 - 移动端适配版
+// 关键点检测 - 考虑裁剪的精确映射
 function startLandmarkDetection() {
     console.log('startLandmarkDetection 开始执行');
     
@@ -190,28 +190,21 @@ function startLandmarkDetection() {
         return;
     }
     
-    // 等待视频有实际尺寸
     if (video.videoWidth === 0) {
-        console.log('等待视频初始化...');
         setTimeout(startLandmarkDetection, 100);
         return;
     }
     
-    console.log('视频内部尺寸:', video.videoWidth, video.videoHeight);
-    
-    // 获取视频容器的实际显示尺寸
     const containerRect = video.getBoundingClientRect();
     const containerWidth = containerRect.width;
     const containerHeight = containerRect.height;
     
-    // 设置画布尺寸与视频内部尺寸一致（用于绘制关键点）
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = containerWidth;
+    canvas.height = containerHeight;
     
     const ctx = canvas.getContext('2d');
     
     // 计算视频在容器中的实际显示区域（考虑 object-fit: cover）
-    // 视频可能被裁剪，我们需要计算出显示区域在完整视频中的对应矩形
     const videoAspect = video.videoWidth / video.videoHeight;
     const containerAspect = containerWidth / containerHeight;
     
@@ -219,23 +212,22 @@ function startLandmarkDetection() {
     
     if (videoAspect > containerAspect) {
         // 视频更宽，宽度填满容器，高度被裁剪
-        displayWidth = video.videoWidth;
-        displayHeight = video.videoWidth / containerAspect;
+        displayWidth = containerWidth;
+        displayHeight = containerWidth / videoAspect;
         offsetX = 0;
-        offsetY = (video.videoHeight - displayHeight) / 2;
+        offsetY = (containerHeight - displayHeight) / 2;
     } else {
         // 视频更高，高度填满容器，宽度被裁剪
-        displayWidth = video.videoHeight * containerAspect;
-        displayHeight = video.videoHeight;
-        offsetX = (video.videoWidth - displayWidth) / 2;
+        displayWidth = containerHeight * videoAspect;
+        displayHeight = containerHeight;
+        offsetX = (containerWidth - displayWidth) / 2;
         offsetY = 0;
     }
     
-    // 绘制关键点时的坐标映射函数
-    function mapPointToCanvas(point) {
-        // 将点坐标从完整视频空间映射到显示区域空间
-        const mappedX = (point.x - offsetX) / displayWidth * canvas.width;
-        const mappedY = (point.y - offsetY) / displayHeight * canvas.height;
+    // 计算从视频原始坐标到画布显示坐标的映射
+    function mapToCanvas(x, y) {
+        const mappedX = offsetX + (x / video.videoWidth) * displayWidth;
+        const mappedY = offsetY + (y / video.videoHeight) * displayHeight;
         return { x: mappedX, y: mappedY };
     }
     
@@ -246,74 +238,45 @@ function startLandmarkDetection() {
         }
         
         try {
-            // 确保画布尺寸与视频内部尺寸一致（可能因旋转变化）
-            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                // 重新计算显示区域（因为视频尺寸变了）
-                const newVideoAspect = video.videoWidth / video.videoHeight;
-                const newContainerAspect = containerWidth / containerHeight;
-                if (newVideoAspect > newContainerAspect) {
-                    displayWidth = video.videoWidth;
-                    displayHeight = video.videoWidth / newContainerAspect;
-                    offsetX = 0;
-                    offsetY = (video.videoHeight - displayHeight) / 2;
-                } else {
-                    displayWidth = video.videoHeight * newContainerAspect;
-                    displayHeight = video.videoHeight;
-                    offsetX = (video.videoWidth - displayWidth) / 2;
-                    offsetY = 0;
-                }
-            }
-            
-            // 检测人脸和关键点
             const detections = await faceapi
                 .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
                 .withFaceLandmarks();
             
-            // 清空画布
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             if (detections.length > 0) {
-                console.log(`检测到 ${detections.length} 张人脸`);
-                
                 detections.forEach((detection) => {
                     const box = detection.detection.box;
                     const points = detection.landmarks.positions;
                     
-                    // 映射人脸框坐标
-                    const topLeft = mapPointToCanvas({ x: box.x, y: box.y });
-                    const bottomRight = mapPointToCanvas({ x: box.x + box.width, y: box.y + box.height });
-                    const mappedBoxWidth = bottomRight.x - topLeft.x;
-                    const mappedBoxHeight = bottomRight.y - topLeft.y;
+                    // 映射人脸框
+                    const topLeft = mapToCanvas(box.x, box.y);
+                    const bottomRight = mapToCanvas(box.x + box.width, box.y + box.height);
+                    const mappedWidth = bottomRight.x - topLeft.x;
+                    const mappedHeight = bottomRight.y - topLeft.y;
                     
-                    // 绘制人脸框 - 红色粗线
                     ctx.strokeStyle = '#ff0000';
                     ctx.lineWidth = 5;
-                    ctx.strokeRect(topLeft.x, topLeft.y, mappedBoxWidth, mappedBoxHeight);
+                    ctx.strokeRect(topLeft.x, topLeft.y, mappedWidth, mappedHeight);
                     
-                    // 再画一个白色虚线框
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
                     ctx.setLineDash([5, 5]);
-                    ctx.strokeRect(topLeft.x, topLeft.y, mappedBoxWidth, mappedBoxHeight);
+                    ctx.strokeRect(topLeft.x, topLeft.y, mappedWidth, mappedHeight);
                     ctx.setLineDash([]);
                     
-                    // 根据视频宽度动态调整点的大小
-                    const pointSize = Math.max(2, Math.min(5, video.videoWidth / 150));
+                    const pointSize = Math.max(2, containerWidth / 150);
                     
-                    // 绘制68个关键点
                     points.forEach(point => {
-                        const mappedPoint = mapPointToCanvas(point);
+                        const mapped = mapToCanvas(point.x, point.y);
                         
                         ctx.fillStyle = '#00ff00';
                         ctx.shadowColor = '#00ff00';
                         ctx.shadowBlur = 10;
                         ctx.beginPath();
-                        ctx.arc(mappedPoint.x, mappedPoint.y, pointSize, 0, 2 * Math.PI);
+                        ctx.arc(mapped.x, mapped.y, pointSize, 0, 2 * Math.PI);
                         ctx.fill();
                         
-                        // 加白边
                         ctx.shadowBlur = 0;
                         ctx.strokeStyle = '#ffffff';
                         ctx.lineWidth = 1;
