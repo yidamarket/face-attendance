@@ -173,7 +173,8 @@ function stopCamera() {
     
     updateGlobalVars();
 }
-// 关键点检测 - 考虑裁剪的精确映射
+
+// 关键点检测 - 精确映射版（修复移动端偏移）
 function startLandmarkDetection() {
     console.log('startLandmarkDetection 开始执行');
     
@@ -195,10 +196,12 @@ function startLandmarkDetection() {
         return;
     }
     
+    // 获取容器实际显示尺寸
     const containerRect = video.getBoundingClientRect();
     const containerWidth = containerRect.width;
     const containerHeight = containerRect.height;
     
+    // 设置画布尺寸与容器一致（用于绘制）
     canvas.width = containerWidth;
     canvas.height = containerHeight;
     
@@ -224,7 +227,9 @@ function startLandmarkDetection() {
         offsetY = 0;
     }
     
-    // 计算从视频原始坐标到画布显示坐标的映射
+    console.log(`视频原始: ${video.videoWidth}x${video.videoHeight}, 容器: ${containerWidth}x${containerHeight}, 显示区域: ${displayWidth}x${displayHeight}, 偏移: (${offsetX},${offsetY})`);
+    
+    // 映射函数
     function mapToCanvas(x, y) {
         const mappedX = offsetX + (x / video.videoWidth) * displayWidth;
         const mappedY = offsetY + (y / video.videoHeight) * displayHeight;
@@ -265,7 +270,8 @@ function startLandmarkDetection() {
                     ctx.strokeRect(topLeft.x, topLeft.y, mappedWidth, mappedHeight);
                     ctx.setLineDash([]);
                     
-                    const pointSize = Math.max(2, containerWidth / 150);
+                    // 动态点大小
+                    const pointSize = Math.max(3, containerWidth / 120);
                     
                     points.forEach(point => {
                         const mapped = mapToCanvas(point.x, point.y);
@@ -297,16 +303,13 @@ function startLandmarkDetection() {
     
     detect();
 }
+
 // 检查是否已识别员工，然后记录打卡
 function checkLoginThenRecord(actionType) {
     if (!currentUser) {
-        // 如果没有人脸识别，提示用户先识别
         showStatus('请先进行人脸识别', 'error');
-        // 或者可以选择显示登录模态框（如果需要登录才能打卡，但这里不需要）
-        // document.getElementById('loginModal').style.display = 'flex';
         return;
     }
-    // 直接调用打卡记录函数
     record(actionType);
 }
 
@@ -315,7 +318,7 @@ function closeLoginModal() {
     document.getElementById('loginModal').style.display = 'none';
 }
 
-// 识别
+// 识别 - 修复版（等待视频稳定）
 async function identify() {
     console.log('identify 被调用');
     
@@ -327,7 +330,24 @@ async function identify() {
     if (!isCameraActive) {
         console.log('摄像头未启动，现在启动');
         await startCamera();
-        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // 等待视频真正就绪（有有效尺寸并稳定一帧）
+        const video = document.getElementById('video');
+        await new Promise((resolve) => {
+            const checkReady = () => {
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    // 再等待两帧确保图像稳定
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            setTimeout(resolve, 100); // 额外延迟
+                        });
+                    });
+                } else {
+                    requestAnimationFrame(checkReady);
+                }
+            };
+            checkReady();
+        });
     }
     
     const video = document.getElementById('video');
