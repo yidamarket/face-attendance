@@ -40,6 +40,12 @@ const translations = {
         retrying: 'Nouvelle tentative...',
         confidence: 'Confiance',
         
+        // 考勤动作类型
+        check_in: 'Arrivée',
+        check_out: 'Départ',
+        break_start: 'Début Pause',
+        break_end: 'Fin Pause',
+        
         // 导航
         nav_attendance: 'Pointage',
         nav_register: 'Enregistrement',
@@ -75,10 +81,6 @@ const translations = {
         current_employee: 'Employé actuel',
         remaining_leave: 'Congés restants',
         today_count: "Aujourd'hui",
-        check_in: 'Arrivée',
-        check_out: 'Départ',
-        break_start: 'Début Pause',
-        break_end: 'Fin Pause',
         today_records: 'Pointages du jour',
         no_records: 'Aucun pointage aujourd\'hui',
         record_success: 'Pointage enregistré',
@@ -153,6 +155,7 @@ const translations = {
         no_face_detected: 'Aucun visage détecté, assurez-vous de faire face à la caméra',
 
         // 错误信息
+        error_faceapi: 'Échec du chargement de FaceAPI',
         error_camera: 'Impossible d\'accéder à la caméra',
         error_model: 'Échec du chargement du modèle',
         error_face_detection: 'Aucun visage détecté',
@@ -173,7 +176,7 @@ const translations = {
     zh: {
         // 通用
         unknown_user: '❌ 陌生人！未识别到匹配的员工，请联系管理员录入人脸',
-no_face_detected: '未检测到人脸，请确保面部正对摄像头',
+        no_face_detected: '未检测到人脸，请确保面部正对摄像头',
         app_name: '人脸识别考勤系统',
         loading: '加载中...',
         success: '成功',
@@ -194,6 +197,12 @@ no_face_detected: '未检测到人脸，请确保面部正对摄像头',
         previous: '上一步',
         retrying: '重试中...',
         confidence: '置信度',
+        
+        // 考勤动作类型
+        check_in: '上班打卡',
+        check_out: '下班打卡',
+        break_start: '休息开始',
+        break_end: '休息结束',
         
         // 导航
         nav_attendance: '考勤打卡',
@@ -230,10 +239,6 @@ no_face_detected: '未检测到人脸，请确保面部正对摄像头',
         current_employee: '当前员工',
         remaining_leave: '剩余假期',
         today_count: '今日打卡',
-        check_in: '上班打卡',
-        check_out: '下班打卡',
-        break_start: '休息开始',
-        break_end: '休息结束',
         today_records: '今日打卡记录',
         no_records: '今日暂无打卡记录',
         record_success: '打卡成功',
@@ -306,6 +311,7 @@ no_face_detected: '未检测到人脸，请确保面部正对摄像头',
         custom_range: '自定义时间',
         
         // 错误信息
+        error_faceapi: 'FaceAPI加载失败',
         error_camera: '无法访问摄像头',
         error_model: '模型加载失败',
         error_face_detection: '未检测到人脸',
@@ -325,9 +331,8 @@ no_face_detected: '未检测到人脸，请确保面部正对摄像头',
     // ==================== 英语 (EN) ====================
     en: {
         // 通用
-        // 英语 en 中添加
-unknown_user: '❌ Unknown! No matching employee found, please contact administrator',
-no_face_detected: 'No face detected, please make sure you are facing the camera',
+        unknown_user: '❌ Unknown! No matching employee found, please contact administrator',
+        no_face_detected: 'No face detected, please make sure you are facing the camera',
         app_name: 'Face Recognition Attendance System',
         loading: 'Loading...',
         success: 'Success',
@@ -348,6 +353,12 @@ no_face_detected: 'No face detected, please make sure you are facing the camera'
         previous: 'Previous',
         retrying: 'Retrying...',
         confidence: 'Confidence',
+        
+        // 考勤动作类型
+        check_in: 'Check In',
+        check_out: 'Check Out',
+        break_start: 'Break Start',
+        break_end: 'Break End',
         
         // 导航
         nav_attendance: 'Attendance',
@@ -384,10 +395,6 @@ no_face_detected: 'No face detected, please make sure you are facing the camera'
         current_employee: 'Current Employee',
         remaining_leave: 'Leave Days',
         today_count: 'Today',
-        check_in: 'Check In',
-        check_out: 'Check Out',
-        break_start: 'Break Start',
-        break_end: 'Break End',
         today_records: "Today's Records",
         no_records: 'No records today',
         record_success: 'Record saved',
@@ -460,6 +467,7 @@ no_face_detected: 'No face detected, please make sure you are facing the camera'
         custom_range: 'Custom Range',
         
         // 错误信息
+        error_faceapi: 'FaceAPI loading failed',
         error_camera: 'Cannot access camera',
         error_model: 'Model loading failed',
         error_face_detection: 'No face detected',
@@ -549,7 +557,7 @@ function updatePageLanguage() {
     console.log(`Language updated to: ${currentLanguage}`);
 }
 
-// 检查缺失翻译（仅在开发环境，不使用 process）
+// 检查缺失翻译（仅在开发环境）
 if (typeof window !== 'undefined' && window.location && window.location.hostname === 'localhost') {
     window.checkMissingTranslations = function() {
         const elements = document.querySelectorAll('[data-i18n]');

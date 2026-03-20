@@ -184,7 +184,7 @@ window.addEventListener('load', async function() {
     });
 
     if (!checkFaceApi()) {
-        showStatus('FaceAPI加载失败', 'error');
+        showStatus('error_faceapi', 'error');
         return;
     }
 
@@ -211,7 +211,7 @@ window.addEventListener('load', async function() {
 // ==================== 模型加载 ====================
 async function loadModels(retryCount = 0) {
     try {
-        showStatus('加载模型中...', 'info');
+        showStatus('loading', 'info');
         console.log('开始加载模型');
         
         await Promise.all([
@@ -223,17 +223,17 @@ async function loadModels(retryCount = 0) {
         AppState.set('modelsLoaded', true);
         updateGlobalVars();
         console.log('模型加载成功');
-        showStatus('模型加载成功', 'success');
+        showStatus('success', 'success');
         return true;
     } catch (error) {
         console.error('模型加载失败:', error);
         if (retryCount < MODEL_LOAD_RETRIES) {
             console.log(`重试加载模型 (${retryCount + 1}/${MODEL_LOAD_RETRIES})...`);
-            showStatus(`加载失败，重试中...`, 'warning');
+            showStatus('retrying', 'warning');
             await delay(1000);
             return loadModels(retryCount + 1);
         }
-        showStatus('模型加载失败', 'error');
+        showStatus('error_model', 'error');
         return false;
     }
 }
@@ -287,7 +287,7 @@ async function startCamera() {
         return true;
     } catch (error) {
         console.error('摄像头启动失败:', error);
-        showStatus('无法访问摄像头', 'error');
+        showStatus('error_camera', 'error');
         return false;
     }
 }
@@ -434,7 +434,7 @@ function startLandmarkDetection() {
 
 function checkLoginThenRecord(actionType) {
     if (!AppState.get('currentUser')) {
-        showStatus('请先进行人脸识别', 'error');
+        showStatus('hint_select_employee_first', 'error');
         return;
     }
     record(actionType);
@@ -450,7 +450,7 @@ async function identify(retryCount = 0) {
     console.log(`重试次数: ${retryCount}/${RECOGNITION_CONFIG.MAX_RETRIES}`);
     
     if (!AppState.get('modelsLoaded')) {
-        showStatus('模型未加载完成', 'error');
+        showStatus('error_model', 'error');
         return;
     }
     
@@ -486,7 +486,7 @@ async function identify(retryCount = 0) {
     console.log('✅ 活体检测通过');
     
     const video = document.getElementById('video');
-    showStatus('识别中...', 'info');
+    showStatus('detecting', 'info');
     
     try {
         console.log('📸 检测人脸并提取特征...');
@@ -499,11 +499,11 @@ async function identify(retryCount = 0) {
             console.log('❌ 未检测到人脸');
             if (retryCount < RECOGNITION_CONFIG.MAX_RETRIES) {
                 console.log(`🔄 重试识别 (${retryCount + 1}/${RECOGNITION_CONFIG.MAX_RETRIES})...`);
-                showStatus('未检测到人脸，重试中...', 'warning');
+                showStatus('detect_failed_retry', 'warning');
                 await delay(500);
                 return identify(retryCount + 1);
             }
-            showStatus('未检测到人脸', 'error');
+            showStatus('no_face_detected', 'error');
             return;
         }
         console.log('✅ 人脸检测成功');
@@ -522,7 +522,7 @@ async function identify(retryCount = 0) {
         
         if (!users || users.length === 0) {
             console.log('❌ 暂无已注册员工');
-            showStatus('暂无已注册员工', 'error');
+            showStatus('no_registered_users', 'error');
             return;
         }
         console.log(`✅ 找到 ${users.length} 个已注册用户`);
@@ -561,7 +561,7 @@ async function identify(retryCount = 0) {
         
         if (distances.length === 0) {
             console.log('❌ 无有效用户数据');
-            showStatus('无法匹配：无有效用户数据', 'error');
+            showStatus('no_valid_user_data', 'error');
             return;
         }
         
@@ -586,14 +586,14 @@ async function identify(retryCount = 0) {
         // 🚨 第一关：绝对拒绝检查
         if (best.distance > RECOGNITION_CONFIG.ABSOLUTE_REJECT_THRESHOLD) {
             console.log(`❌ 拒绝: 距离=${best.distance.toFixed(3)} > ${RECOGNITION_CONFIG.ABSOLUTE_REJECT_THRESHOLD}`);
-            showStatus(`❌ 陌生人，未识别到匹配的员工`, 'error');
+            showStatus(`unknown_user`, 'error');
             return;
         }
         
         // 第二关：绝对距离阈值
         if (best.distance >= RECOGNITION_CONFIG.ABSOLUTE_THRESHOLD) {
             console.log(`❌ 拒绝: 距离=${best.distance.toFixed(3)} >= ${RECOGNITION_CONFIG.ABSOLUTE_THRESHOLD}`);
-            showStatus(`❌ 陌生人，未识别到匹配的员工`, 'error');
+            showStatus(`unknown_user`, 'error');
             return;
         }
         
@@ -602,7 +602,7 @@ async function identify(retryCount = 0) {
             const margin = second.distance - best.distance;
             if (margin <= RECOGNITION_CONFIG.MIN_MARGIN) {
                 console.log(`⚠️ 拒绝: 区分度不足, margin=${margin.toFixed(3)} <= ${RECOGNITION_CONFIG.MIN_MARGIN}`);
-                showStatus(`⚠️ 识别不确定：与多人相似度过高，请确保光线充足并面对摄像头`, 'warning');
+                showStatus(`identify_uncertain`, 'warning');
                 return;
             }
         }
@@ -612,7 +612,7 @@ async function identify(retryCount = 0) {
             const ratio = best.distance / second.distance;
             if (ratio >= RECOGNITION_CONFIG.MAX_RATIO) {
                 console.log(`⚠️ 拒绝: 比值过高, ratio=${ratio.toFixed(3)} >= ${RECOGNITION_CONFIG.MAX_RATIO}`);
-                showStatus(`⚠️ 识别置信度不足，请调整角度或光线重试`, 'warning');
+                showStatus(`identify_low_confidence`, 'warning');
                 return;
             }
         }
@@ -623,7 +623,7 @@ async function identify(retryCount = 0) {
         const matchedUser = best.user;
         AppState.set('currentUser', matchedUser);
         
-        const userTypeLabel = window.USER_TYPE_LABELS?.[matchedUser.user_type] || matchedUser.user_type;
+        const userTypeLabel = t(matchedUser.user_type) || matchedUser.user_type;
         
         const userCard = document.getElementById('userCard');
         if (userCard) {
@@ -649,7 +649,7 @@ async function identify(retryCount = 0) {
         console.log(`📊 置信度: ${confidence.toFixed(1)}%`);
         console.log('========== ✅ 识别完成 ==========');
         
-        showStatus(`识别成功！欢迎 ${matchedUser.username} (置信度: ${confidence.toFixed(1)}%)`, 'success');
+        showStatus(`identify_success`, 'success');
         
         document.querySelectorAll('.action-btn').forEach(btn => {
             btn.classList.remove('disabled');
@@ -666,7 +666,7 @@ async function identify(retryCount = 0) {
             await delay(500);
             return identify(retryCount + 1);
         }
-        showStatus('识别失败，请重试', 'error');
+        showStatus('identify_error', 'error');
     }
     
     updateGlobalVars();
@@ -687,7 +687,7 @@ function startAutoCloseTimer() {
         const recordsList = document.getElementById('recordsList');
         
         if (userCard) userCard.style.display = 'none';
-        if (recordsList) recordsList.innerHTML = '<div class="empty">暂无打卡记录</div>';
+        if (recordsList) recordsList.innerHTML = `<div class="empty">${t('no_records')}</div>`;
         
         document.querySelectorAll('.action-btn').forEach(btn => {
             btn.classList.add('disabled');
@@ -703,7 +703,7 @@ function startAutoCloseTimer() {
         
         if (hint) hint.style.display = 'none';
         
-        showStatus('信息已自动关闭', 'info');
+        showStatus('auto_close_info', 'info');
         AppState.set('autoCloseTimer', null);
         updateGlobalVars();
     }, 5000);
@@ -786,7 +786,7 @@ function displayUserList(users) {
     if (!userList) return;
 
     if (users.length === 0) {
-        userList.innerHTML = '<div class="empty">暂无员工数据</div>';
+        userList.innerHTML = `<div class="empty">${t('no_employee')}</div>`;
         return;
     }
 
@@ -797,16 +797,16 @@ function displayUserList(users) {
         div.className = `user-item ${user.face_registered ? 'registered' : 'unregistered'}`;
         div.onclick = () => selectUser(user);
         
-        const status = user.face_registered ? '已录入' : '待录入';
+        const status = user.face_registered ? t('registered') : t('unregistered');
         const faceCount = user.face_features_array?.length || 0;
-        const userTypeLabel = window.USER_TYPE_LABELS?.[user.user_type] || user.user_type;
+        const userTypeLabel = t(user.user_type) || user.user_type;
         
         div.innerHTML = `
             <div class="user-avatar-small">${user.username.charAt(0).toUpperCase()}</div>
             <div class="user-info">
                 <div class="user-name">${user.username}</div>
-                <div class="user-meta">${userTypeLabel} · 假期 ${user.conges_payes}天</div>
-                ${faceCount > 0 ? `<div class="face-count">📸 ${faceCount}张人脸</div>` : ''}
+                <div class="user-meta">${userTypeLabel} · ${t('remaining_leave')} ${user.conges_payes}${t('days')}</div>
+                ${faceCount > 0 ? `<div class="face-count">📸 ${faceCount}${t('face_count_unit')}</div>` : ''}
             </div>
             <div class="user-status ${user.face_registered ? 'status-registered' : 'status-unregistered'}">${status}</div>
         `;
@@ -890,7 +890,7 @@ async function performLivenessCheck() {
                         clearInterval(checkInterval);
                         clearTimeout(timeout);
                         if (floatingHint) floatingHint.style.display = 'none';
-                        showStatus(t('liveness_success'), 'success');
+                        showStatus('liveness_success', 'success');
                         resolve(true);
                     }
                 }
@@ -902,7 +902,7 @@ async function performLivenessCheck() {
         const timeout = setTimeout(() => {
             clearInterval(checkInterval);
             if (floatingHint) floatingHint.style.display = 'none';
-            showStatus(t('liveness_timeout'), 'error');
+            showStatus('liveness_timeout', 'error');
             resolve(false);
         }, 10000);
     });
@@ -936,7 +936,7 @@ function resetRegistration() {
 async function registerFace() {
     const selectedId = AppState.get('selectedUserId');
     if (!selectedId) {
-        showStatus('请先选择员工', 'error');
+        showStatus('hint_select_employee', 'error');
         return;
     }
     
@@ -948,13 +948,13 @@ async function registerFace() {
     const video = document.getElementById('video');
     
     try {
-        showStatus('正在采样人脸，请保持不动...', 'info');
+        showStatus('register_sampling', 'info');
         
         const samples = [];
         let successCount = 0;
         
         for (let i = 0; i < REGISTER_SAMPLE_COUNT; i++) {
-            showStatus(`采样中 ${i + 1}/${REGISTER_SAMPLE_COUNT}...`, 'info');
+            showStatus(`${t('register_sampling_progress')} ${i + 1}/${REGISTER_SAMPLE_COUNT}...`, 'info');
             
             const detection = await faceapi
                 .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
@@ -977,12 +977,12 @@ async function registerFace() {
         }
         
         if (samples.length === 0) {
-            showStatus('未检测到人脸，请重试', 'error');
+            showStatus('register_no_face', 'error');
             return;
         }
         
         if (samples.length < 3) {
-            showStatus(`仅采集到 ${samples.length} 张人脸，建议重新录入`, 'warning');
+            showStatus(`${t('register_few_faces')} ${samples.length} ${t('register_few_faces_unit')}`, 'warning');
         }
         
         const { data: user, error: fetchError } = await supabase
@@ -1014,7 +1014,7 @@ async function registerFace() {
 
         if (error) throw error;
 
-        showStatus(`人脸录入成功！共采集 ${samples.length} 张`, 'success');
+        showStatus(`${t('register_success')} (${samples.length} ${t('register_faces')})`, 'success');
         await loadAllUsers();
         
         const registerBtn = document.getElementById('registerBtn');
@@ -1024,7 +1024,7 @@ async function registerFace() {
 
     } catch (error) {
         console.error('录入失败:', error);
-        showStatus('录入失败', 'error');
+        showStatus('register_error', 'error');
     }
 }
 
@@ -1032,16 +1032,9 @@ async function registerFace() {
 async function record(actionType) {
     const currentUserData = AppState.get('currentUser');
     if (!currentUserData) {
-        showStatus('请先进行人脸识别', 'error');
+        showStatus('hint_select_employee_first', 'error');
         return;
     }
-
-    const actionNames = {
-        'check_in': '上班打卡',
-        'check_out': '下班打卡',
-        'break_start': '休息开始',
-        'break_end': '休息结束'
-    };
 
     try {
         const { error } = await supabase
@@ -1055,7 +1048,8 @@ async function record(actionType) {
 
         if (error) throw error;
 
-        showStatus(actionNames[actionType] + '成功', 'success');
+        const actionName = t(actionType) || actionType;
+        showStatus(`${actionName}${t('record_success_suffix')}`, 'success');
         
         const now = new Date();
         const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -1076,7 +1070,7 @@ async function record(actionType) {
 
     } catch (error) {
         console.error('记录失败:', error);
-        showStatus('记录失败', 'error');
+        showStatus('record_failed', 'error');
     }
 }
 
@@ -1097,19 +1091,13 @@ async function loadTodayRecords(userId) {
         if (!recordsDiv) return;
 
         if (!data || data.length === 0) {
-            recordsDiv.innerHTML = '<div class="empty">今日暂无打卡记录</div>';
+            recordsDiv.innerHTML = `<div class="empty">${t('no_records')}</div>`;
             const todayCount = document.getElementById('todayCount');
             if (todayCount) todayCount.textContent = '0';
             return;
         }
 
         let html = '';
-        const typeNames = {
-            'check_in': '上班打卡',
-            'check_out': '下班打卡',
-            'break_start': '休息开始',
-            'break_end': '休息结束'
-        };
         
         const todayCount = document.getElementById('todayCount');
         if (todayCount) todayCount.textContent = data.length;
@@ -1119,11 +1107,12 @@ async function loadTodayRecords(userId) {
                 hour: '2-digit',
                 minute: '2-digit'
             });
+            const actionName = t(record.action_type) || record.action_type;
             
             html += `
                 <div class="record-item">
                     <span class="record-time">${time}</span>
-                    <span class="record-type">${typeNames[record.action_type]}</span>
+                    <span class="record-type">${actionName}</span>
                 </div>
             `;
         });
@@ -1135,19 +1124,53 @@ async function loadTodayRecords(userId) {
     }
 }
 
-function showStatus(message, type) {
+// 修改后的 showStatus 函数 - 支持三语
+function showStatus(messageKey, type, duration = null) {
     const statusDiv = document.getElementById('status');
     if (!statusDiv) return;
+    
+    // 清除之前的定时器
+    if (window.statusTimeout) {
+        clearTimeout(window.statusTimeout);
+    }
+    
+    // 获取翻译后的消息
+    let message = messageKey;
+    if (typeof messageKey === 'string' && messageKey.includes(' ')) {
+        // 如果已经是完整消息，直接使用（兼容旧代码）
+        message = messageKey;
+    } else {
+        // 尝试翻译
+        const translated = t(messageKey);
+        if (translated !== messageKey) {
+            message = translated;
+        }
+    }
     
     statusDiv.style.display = 'block';
     statusDiv.className = `status ${type}`;
     statusDiv.textContent = message;
     
-    setTimeout(() => {
-        if (statusDiv) {
+    // 根据消息类型设置不同的显示时间
+    let displayDuration = duration;
+    if (displayDuration === null) {
+        if (type === 'error') {
+            displayDuration = 5000;
+        } else if (type === 'warning') {
+            displayDuration = 4000;
+        } else if (type === 'success') {
+            displayDuration = 4000;
+        } else {
+            displayDuration = 4000;
+        }
+    }
+    
+    window.statusTimeout = setTimeout(() => {
+        if (statusDiv && statusDiv.style) {
             statusDiv.style.display = 'none';
         }
-    }, 2000);
+        window.statusTimeout = null;
+    }, displayDuration);
 }
 
 if (typeof window.showConfirm === 'undefined') {
