@@ -173,8 +173,7 @@ function stopCamera() {
     
     updateGlobalVars();
 }
-
-// 关键点检测 - 精确映射版（修复移动端偏移）
+// 最终版：精确映射坐标（移动端适配）
 function startLandmarkDetection() {
     console.log('startLandmarkDetection 开始执行');
     
@@ -196,40 +195,43 @@ function startLandmarkDetection() {
         return;
     }
     
-    // 获取容器实际显示尺寸
+    // 获取容器的实际显示尺寸（CSS像素）
     const containerRect = video.getBoundingClientRect();
     const containerWidth = containerRect.width;
     const containerHeight = containerRect.height;
     
-    // 设置画布尺寸与容器一致（用于绘制）
+    // 设置画布尺寸为容器尺寸（在显示区域上绘制）
     canvas.width = containerWidth;
     canvas.height = containerHeight;
     
     const ctx = canvas.getContext('2d');
     
-    // 计算视频在容器中的实际显示区域（考虑 object-fit: cover）
+    // 计算视频在容器中的实际显示区域（因为 object-fit: cover）
     const videoAspect = video.videoWidth / video.videoHeight;
     const containerAspect = containerWidth / containerHeight;
     
     let displayWidth, displayHeight, offsetX, offsetY;
     
     if (videoAspect > containerAspect) {
-        // 视频更宽，宽度填满容器，高度被裁剪
+        // 视频更宽：宽度填满，高度裁剪
         displayWidth = containerWidth;
         displayHeight = containerWidth / videoAspect;
         offsetX = 0;
         offsetY = (containerHeight - displayHeight) / 2;
     } else {
-        // 视频更高，高度填满容器，宽度被裁剪
+        // 视频更高：高度填满，宽度裁剪
         displayWidth = containerHeight * videoAspect;
         displayHeight = containerHeight;
         offsetX = (containerWidth - displayWidth) / 2;
         offsetY = 0;
     }
     
-    console.log(`视频原始: ${video.videoWidth}x${video.videoHeight}, 容器: ${containerWidth}x${containerHeight}, 显示区域: ${displayWidth}x${displayHeight}, 偏移: (${offsetX},${offsetY})`);
+    // 调试输出（请在手机浏览器中查看控制台）
+    console.log(`视频原始: ${video.videoWidth}x${video.videoHeight}`);
+    console.log(`容器尺寸: ${containerWidth}x${containerHeight}`);
+    console.log(`显示区域: ${displayWidth.toFixed(2)}x${displayHeight.toFixed(2)}, 偏移: (${offsetX.toFixed(2)},${offsetY.toFixed(2)})`);
     
-    // 映射函数
+    // 映射函数：将视频原始坐标转换为画布上的显示坐标
     function mapToCanvas(x, y) {
         const mappedX = offsetX + (x / video.videoWidth) * displayWidth;
         const mappedY = offsetY + (y / video.videoHeight) * displayHeight;
@@ -260,17 +262,19 @@ function startLandmarkDetection() {
                     const mappedWidth = bottomRight.x - topLeft.x;
                     const mappedHeight = bottomRight.y - topLeft.y;
                     
+                    // 绘制红色实线框
                     ctx.strokeStyle = '#ff0000';
-                    ctx.lineWidth = 5;
+                    ctx.lineWidth = 4;
                     ctx.strokeRect(topLeft.x, topLeft.y, mappedWidth, mappedHeight);
                     
+                    // 绘制白色虚线框
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
                     ctx.setLineDash([5, 5]);
                     ctx.strokeRect(topLeft.x, topLeft.y, mappedWidth, mappedHeight);
                     ctx.setLineDash([]);
                     
-                    // 动态点大小
+                    // 根据容器宽度动态调整点大小
                     const pointSize = Math.max(3, containerWidth / 120);
                     
                     points.forEach(point => {
@@ -283,6 +287,7 @@ function startLandmarkDetection() {
                         ctx.arc(mapped.x, mapped.y, pointSize, 0, 2 * Math.PI);
                         ctx.fill();
                         
+                        // 加白边
                         ctx.shadowBlur = 0;
                         ctx.strokeStyle = '#ffffff';
                         ctx.lineWidth = 1;

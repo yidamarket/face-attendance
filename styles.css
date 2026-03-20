@@ -10,9 +10,6 @@ body {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     color: #2d3748;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
 }
 
 /* ==================== 顶部导航栏（移动端优化）==================== */
@@ -81,7 +78,7 @@ body {
     margin-left: auto;
 }
 
-/* 语言切换器（移动端紧凑） */
+/* 语言切换器 */
 .language-switcher {
     display: flex;
     gap: 3px;
@@ -110,7 +107,7 @@ body {
     color: white;
 }
 
-/* 用户信息（用于录入页面） */
+/* 用户信息 */
 .user-info {
     display: flex;
     align-items: center;
@@ -199,7 +196,8 @@ body {
 .video-container {
     position: relative;
     width: 100%;
-    aspect-ratio: 4 / 3; /* 固定宽高比，防止变形 */
+    /* 固定宽高比，请根据您摄像头的实际输出比例调整（常见4:3或16:9） */
+    aspect-ratio: 4 / 3;
     border-radius: 16px;
     overflow: hidden;
     background: #000;
@@ -216,7 +214,7 @@ body {
 #video {
     width: 100%;
     height: 100%;
-    object-fit: cover; /* 确保视频填充容器，不变形 */
+    object-fit: cover;      /* 必须为 cover，不能改为 fill（否则坐标映射会失效） */
     display: block;
 }
 
@@ -226,10 +224,10 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none;
+    pointer-events: none;    /* 关键：确保画布不阻挡按钮点击 */
 }
 
-/* 人脸关键点样式（基础定义，实际大小由JS动态计算） */
+/* 人脸关键点与边框样式（基础定义，实际大小和颜色由 JS 动态控制） */
 .face-point {
     fill: #00ff00;
     filter: drop-shadow(0 0 5px #00ff00);
@@ -242,7 +240,7 @@ body {
     filter: drop-shadow(0 0 10px #00ff00);
 }
 
-/* ==================== 按钮样式（大触摸区域）==================== */
+/* ==================== 按钮样式 ==================== */
 .btn-primary {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -271,7 +269,7 @@ body {
 /* ==================== 打卡按钮网格（移动端单列）==================== */
 .actions {
     display: grid;
-    grid-template-columns: 1fr; /* 移动端单列，易于点击 */
+    grid-template-columns: 1fr;   /* 移动端单列，易于点击 */
     gap: 12px;
     margin: 20px 0;
 }
@@ -290,7 +288,6 @@ body {
     justify-content: center;
     gap: 10px;
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-    opacity: 1;
     width: 100%;
     -webkit-tap-highlight-color: transparent;
 }
@@ -330,7 +327,7 @@ body {
     white-space: nowrap;
 }
 
-/* ==================== 员工信息卡片（移动端紧凑）==================== */
+/* ==================== 员工信息卡片 ==================== */
 .user-card {
     background: white;
     border-radius: 24px;
@@ -493,6 +490,11 @@ body {
     animation: fadeIn 0.2s;
 }
 
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
 .status.success {
     background: #c6f6d5;
     color: #22543d;
@@ -511,7 +513,7 @@ body {
     border-left: 4px solid #4299e1;
 }
 
-/* ==================== 登录模态框（移动端适配）==================== */
+/* ==================== 登录模态框 ==================== */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -538,6 +540,11 @@ body {
     animation: modalPop 0.3s ease;
 }
 
+@keyframes modalPop {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+}
+
 .modal-icon {
     font-size: 50px;
     margin-bottom: 16px;
@@ -558,7 +565,7 @@ body {
 .modal-buttons {
     display: flex;
     gap: 12px;
-    flex-direction: column; /* 移动端堆叠按钮 */
+    flex-direction: column;
 }
 
 .modal-btn {
@@ -690,7 +697,7 @@ body {
 
 .user-info {
     flex: 1;
-    min-width: 0; /* 允许文本溢出省略 */
+    min-width: 0;
 }
 
 .user-name {
@@ -788,10 +795,10 @@ body {
     100% { opacity: 0.8; }
 }
 
-/* ==================== 平板及桌面增强 ==================== */
+/* ==================== 平板及以上增强 ==================== */
 @media (min-width: 640px) {
     .actions {
-        grid-template-columns: repeat(2, 1fr); /* 平板双列 */
+        grid-template-columns: repeat(2, 1fr);
     }
 
     .action-group {
@@ -815,11 +822,7 @@ body {
 }
 
 @media (min-width: 1024px) {
-    .container {
-        padding: 0 20px;
-    }
-
     .actions {
-        grid-template-columns: repeat(4, 1fr); /* 桌面四列 */
+        grid-template-columns: repeat(4, 1fr);
     }
 }

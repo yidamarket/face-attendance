@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>管理员登录</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👤</text></svg>">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <div class="logo">FaceAttendance</div>
+            <div class="top-nav">
+                <a href="index.html">打卡</a>
+                <a href="register.html">录入</a>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <div class="language-switcher">
+                <button class="lang-btn" onclick="setLanguage('fr')" data-lang="fr">FR</button>
+                <button class="lang-btn" onclick="setLanguage('zh')" data-lang="zh">中文</button>
+                <button class="lang-btn" onclick="setLanguage('en')" data-lang="en">EN</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="login-container" style="display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 60px);">
+        <div class="modal" style="max-width: 400px;">
+            <div class="modal-icon">👤</div>
+            <h2>管理员登录</h2>
+            <p>请输入您的账号信息</p>
+            
+            <input type="text" id="username" placeholder="用户名" style="width: 100%; padding: 15px; margin-bottom: 15px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px;">
+            <input type="password" id="password" placeholder="密码" style="width: 100%; padding: 15px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 16px;">
+            
+            <button class="modal-btn modal-btn-primary" onclick="handleLogin()" style="width: 100%; padding: 15px; font-size: 16px;">登录</button>
+            
+            <div id="errorMessage" style="color: #f56565; margin-top: 15px; text-align: center;"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="languages.js"></script>
+    <script>
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.lang === currentLanguage);
+        });
+
+        async function handleLogin() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const errorDiv = document.getElementById('errorMessage');
+
+            if (!username || !password) {
+                errorDiv.textContent = '请输入用户名和密码';
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('username', username)
+                    .eq('password', password);
+
+                if (error) throw error;
+
+                if (data && data.length > 0) {
+                    const user = data[0];
+                    
+                    if (user.user_type === 'admin' || user.user_type === 'manager') {
+                        saveSession(user, true);
+                        window.location.href = 'register.html';
+                    } else {
+                        errorDiv.textContent = '您不是管理员，无法登录';
+                    }
+                } else {
+                    errorDiv.textContent = '用户名或密码错误';
+                }
+            } catch (error) {
+                errorDiv.textContent = '登录失败，请重试';
+            }
+        }
+    </script>
+</body>
+</html>
