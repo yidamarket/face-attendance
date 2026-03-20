@@ -72,7 +72,12 @@ const translations = {
         register_success: 'Visage enregistré avec succès',
         register_error: 'Échec de l\'enregistrement',
         face_hint: 'Assurez un bon éclairage, face à la caméra',
-        
+        // 法语 (fr)
+open_mouth: '👄 Ouvrez la bouche',
+close_mouth: '👄 Fermez la bouche',
+liveness_success: '✅ Détection de vivacité réussie',
+liveness_failed: '❌ Échec de la détection, veuillez réessayer',
+liveness_timeout: '⏰ Délai dépassé, veuillez réessayer',
         status_normal: 'Normal',
         status_late: 'Retard',
         status_early_leave: 'Départ anticipé',
@@ -147,7 +152,12 @@ const translations = {
         status_normal: '正常',
         status_late: '迟到',
         status_early_leave: '早退',
-        
+        // 中文 (zh)
+open_mouth: '👄 请张开嘴巴',
+close_mouth: '👄 请闭上嘴巴',
+liveness_success: '✅ 活体检测通过',
+liveness_failed: '❌ 活体检测失败，请重试',
+liveness_timeout: '⏰ 超时，请重试',
         admin: '管理员',
         preparateur: '准备员',
         chauffeur: '司机',
@@ -170,7 +180,12 @@ const translations = {
         nav_attendance: 'Attendance',
         nav_register: 'Registration',
         nav_logout: 'Logout',
-        
+        // 英语 (en)
+open_mouth: '👄 Please open your mouth',
+close_mouth: '👄 Please close your mouth',
+liveness_success: '✅ Liveness detection passed',
+liveness_failed: '❌ Liveness detection failed, please try again',
+liveness_timeout: '⏰ Timeout, please try again',
         login_title: 'Admin Login',
         login_subtitle: 'Please enter your credentials',
         username: 'Username',

@@ -175,140 +175,103 @@ function stopCamera() {
 }
 // 最终版：精确映射坐标（移动端适配）
 function startLandmarkDetection() {
-    console.log('startLandmarkDetection 开始执行');
-    
-    if (!modelsLoaded || !checkFaceApi() || !isCameraActive) {
-        console.log('条件不满足，退出');
-        return;
-    }
-    
+    if (!modelsLoaded || !checkFaceApi() || !isCameraActive) return;
     const video = document.getElementById('video');
     const canvas = document.getElementById('overlay');
-    
-    if (!video || !canvas) {
-        console.log('video或canvas不存在');
-        return;
-    }
-    
-    if (video.videoWidth === 0) {
-        setTimeout(startLandmarkDetection, 100);
-        return;
-    }
-    
-    // 获取容器的实际显示尺寸（CSS像素）
-    const containerRect = video.getBoundingClientRect();
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
-    
-    // 设置画布尺寸为容器尺寸（在显示区域上绘制）
-    canvas.width = containerWidth;
-    canvas.height = containerHeight;
-    
-    const ctx = canvas.getContext('2d');
-    
-    // 计算视频在容器中的实际显示区域（因为 object-fit: cover）
-    const videoAspect = video.videoWidth / video.videoHeight;
-    const containerAspect = containerWidth / containerHeight;
-    
-    let displayWidth, displayHeight, offsetX, offsetY;
-    
-    if (videoAspect > containerAspect) {
-        // 视频更宽：宽度填满，高度裁剪
-        displayWidth = containerWidth;
-        displayHeight = containerWidth / videoAspect;
-        offsetX = 0;
-        offsetY = (containerHeight - displayHeight) / 2;
-    } else {
-        // 视频更高：高度填满，宽度裁剪
-        displayWidth = containerHeight * videoAspect;
-        displayHeight = containerHeight;
-        offsetX = (containerWidth - displayWidth) / 2;
-        offsetY = 0;
-    }
-    
-    // 调试输出（请在手机浏览器中查看控制台）
-    console.log(`视频原始: ${video.videoWidth}x${video.videoHeight}`);
-    console.log(`容器尺寸: ${containerWidth}x${containerHeight}`);
-    console.log(`显示区域: ${displayWidth.toFixed(2)}x${displayHeight.toFixed(2)}, 偏移: (${offsetX.toFixed(2)},${offsetY.toFixed(2)})`);
-    
-    // 映射函数：将视频原始坐标转换为画布上的显示坐标
-    function mapToCanvas(x, y) {
-        const mappedX = offsetX + (x / video.videoWidth) * displayWidth;
-        const mappedY = offsetY + (y / video.videoHeight) * displayHeight;
-        return { x: mappedX, y: mappedY };
-    }
-    
+    if (!video || !canvas) return;
+    if (video.videoWidth === 0) { setTimeout(startLandmarkDetection, 100); return; }
+
+    let lastWidth = 0, lastHeight = 0;
+
     async function detect() {
-        if (!isCameraActive || !video || video.paused || video.ended) {
+        if (!isCameraActive || video.paused || video.ended) {
             requestAnimationFrame(detect);
             return;
         }
-        
+
+        // 获取容器实际显示尺寸（CSS像素）
+        const containerWidth = video.clientWidth;
+        const containerHeight = video.clientHeight;
+
+        // 若容器尺寸变化，重新设置画布
+        if (lastWidth !== containerWidth || lastHeight !== containerHeight) {
+            canvas.width = containerWidth;
+            canvas.height = containerHeight;
+            lastWidth = containerWidth;
+            lastHeight = containerHeight;
+        }
+
+        const ctx = canvas.getContext('2d');
+        const vw = video.videoWidth, vh = video.videoHeight;
+
+        // 计算缩放比例（cover 效果：取较大的缩放系数）
+        const scaleX = containerWidth / vw;
+        const scaleY = containerHeight / vh;
+        const scale = Math.max(scaleX, scaleY);
+
+        // 缩放后的视频尺寸
+        const scaledW = vw * scale;
+        const scaledH = vh * scale;
+
+        // 偏移量（居中裁剪）
+        const offsetX = (containerWidth - scaledW) / 2;
+        const offsetY = (containerHeight - scaledH) / 2;
+
+        // 映射函数
+        function map(x, y) {
+            return { x: offsetX + x * scale, y: offsetY + y * scale };
+        }
+
         try {
             const detections = await faceapi
                 .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
                 .withFaceLandmarks();
-            
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            if (detections.length > 0) {
-                detections.forEach((detection) => {
-                    const box = detection.detection.box;
-                    const points = detection.landmarks.positions;
-                    
-                    // 映射人脸框
-                    const topLeft = mapToCanvas(box.x, box.y);
-                    const bottomRight = mapToCanvas(box.x + box.width, box.y + box.height);
-                    const mappedWidth = bottomRight.x - topLeft.x;
-                    const mappedHeight = bottomRight.y - topLeft.y;
-                    
+
+            if (detections.length) {
+                detections.forEach(d => {
+                    const box = d.detection.box;
+                    const tl = map(box.x, box.y);
+                    const br = map(box.x + box.width, box.y + box.height);
+                    const w = br.x - tl.x;
+                    const h = br.y - tl.y;
+
                     // 绘制红色实线框
                     ctx.strokeStyle = '#ff0000';
                     ctx.lineWidth = 4;
-                    ctx.strokeRect(topLeft.x, topLeft.y, mappedWidth, mappedHeight);
-                    
+                    ctx.strokeRect(tl.x, tl.y, w, h);
+
                     // 绘制白色虚线框
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
                     ctx.setLineDash([5, 5]);
-                    ctx.strokeRect(topLeft.x, topLeft.y, mappedWidth, mappedHeight);
+                    ctx.strokeRect(tl.x, tl.y, w, h);
                     ctx.setLineDash([]);
-                    
-                    // 根据容器宽度动态调整点大小
-                    const pointSize = Math.max(3, containerWidth / 120);
-                    
-                    points.forEach(point => {
-                        const mapped = mapToCanvas(point.x, point.y);
-                        
+
+                    // 点的大小基于人脸框宽度
+                    const pointSize = Math.max(4, Math.min(12, w / 25));
+
+                    d.landmarks.positions.forEach(p => {
+                        const mp = map(p.x, p.y);
                         ctx.fillStyle = '#00ff00';
                         ctx.shadowColor = '#00ff00';
                         ctx.shadowBlur = 10;
                         ctx.beginPath();
-                        ctx.arc(mapped.x, mapped.y, pointSize, 0, 2 * Math.PI);
+                        ctx.arc(mp.x, mp.y, pointSize, 0, 2 * Math.PI);
                         ctx.fill();
-                        
-                        // 加白边
                         ctx.shadowBlur = 0;
                         ctx.strokeStyle = '#ffffff';
                         ctx.lineWidth = 1;
                         ctx.stroke();
                     });
-                    
-                    ctx.shadowBlur = 0;
                 });
             }
-            
-            requestAnimationFrame(detect);
-            
-        } catch (error) {
-            console.error('检测错误:', error);
-            requestAnimationFrame(detect);
-        }
+        } catch (e) {}
+        requestAnimationFrame(detect);
     }
-    
     detect();
 }
-
 // 检查是否已识别员工，然后记录打卡
 function checkLoginThenRecord(actionType) {
     if (!currentUser) {
@@ -336,15 +299,14 @@ async function identify() {
         console.log('摄像头未启动，现在启动');
         await startCamera();
         
-        // 等待视频真正就绪（有有效尺寸并稳定一帧）
+        // 等待视频稳定
         const video = document.getElementById('video');
         await new Promise((resolve) => {
             const checkReady = () => {
                 if (video.videoWidth > 0 && video.videoHeight > 0) {
-                    // 再等待两帧确保图像稳定
                     requestAnimationFrame(() => {
                         requestAnimationFrame(() => {
-                            setTimeout(resolve, 100); // 额外延迟
+                            setTimeout(resolve, 100);
                         });
                     });
                 } else {
@@ -354,6 +316,15 @@ async function identify() {
             checkReady();
         });
     }
+    
+    // ========== 多动作活体检测 ==========
+    const livenessPassed = await performLivenessCheck();
+    if (!livenessPassed) {
+        // 活体检测失败，停止摄像头并返回
+        stopCamera();
+        return;
+    }
+    // ==================================
     
     const video = document.getElementById('video');
     
@@ -370,17 +341,34 @@ async function identify() {
             return;
         }
 
-        const features = Array.from(detection.descriptor);
-        const registeredUsers = allUsers.filter(u => u.face_registered && u.face_features);
+        const currentFeatures = Array.from(detection.descriptor);
+        
+        // 获取所有已注册的员工（多特征版本）
+        const { data: users, error } = await supabase
+            .from('users')
+            .select('id, username, user_type, conges_payes, face_features_array')
+            .eq('face_registered', true);
+        
+        if (error) throw error;
         
         let bestMatch = null;
         let highestSimilarity = 0;
-        const threshold = 0.6;
+        const threshold = 0.7;
         
-        for (const user of registeredUsers) {
-            const similarity = cosineSimilarity(features, user.face_features);
-            if (similarity > highestSimilarity) {
-                highestSimilarity = similarity;
+        for (const user of users) {
+            const featuresArray = user.face_features_array || [];
+            if (featuresArray.length === 0) continue;
+            
+            let maxSimilarityForUser = 0;
+            for (const storedFeatures of featuresArray) {
+                const sim = cosineSimilarity(currentFeatures, storedFeatures);
+                if (sim > maxSimilarityForUser) {
+                    maxSimilarityForUser = sim;
+                }
+            }
+            
+            if (maxSimilarityForUser > highestSimilarity) {
+                highestSimilarity = maxSimilarityForUser;
                 bestMatch = user;
             }
         }
@@ -395,9 +383,8 @@ async function identify() {
             document.getElementById('userConges').textContent = bestMatch.conges_payes;
             document.getElementById('userInitial').textContent = bestMatch.username.charAt(0).toUpperCase();
             
-            showStatus(`识别成功！欢迎 ${bestMatch.username}`, 'success');
+            showStatus(`识别成功！欢迎 ${bestMatch.username} (相似度: ${(highestSimilarity*100).toFixed(1)}%)`, 'success');
             
-            // 启用打卡按钮
             document.querySelectorAll('.action-btn').forEach(btn => {
                 btn.classList.remove('disabled');
             });
@@ -418,7 +405,6 @@ async function identify() {
     
     updateGlobalVars();
 }
-
 // 启动自动关闭定时器（5秒）
 function startAutoCloseTimer() {
     if (autoCloseTimer) {
@@ -460,12 +446,18 @@ async function loadAllUsers() {
         
         const { data, error } = await supabase
             .from('users')
-            .select('id, username, user_type, conges_payes, face_features, face_registered')
+            .select('id, username, user_type, conges_payes, face_features_array, face_registered')
             .order('username');
         
         if (error) throw error;
         
-        allUsers = data || [];
+        // 保持原有结构，但注意 face_features 字段可能已被替换
+        allUsers = data.map(user => ({
+            ...user,
+            face_features: user.face_features_array?.[0] || null, // 兼容旧代码，取第一张
+            face_features_array: user.face_features_array || []
+        }));
+        
         updateGlobalVars();
         updateStats();
         
@@ -479,7 +471,6 @@ async function loadAllUsers() {
         return [];
     }
 }
-
 // 更新统计
 function updateStats() {
     const totalEl = document.getElementById('totalCount');
@@ -524,6 +515,7 @@ function displayUserList(users) {
         div.onclick = () => selectUser(user);
         
         const status = user.face_registered ? '已录入' : '待录入';
+        const faceCount = user.face_features_array?.length || 0;
         const userTypeLabel = window.USER_TYPE_LABELS?.[user.user_type] || user.user_type;
         
         div.innerHTML = `
@@ -531,6 +523,7 @@ function displayUserList(users) {
             <div class="user-info">
                 <div class="user-name">${user.username}</div>
                 <div class="user-meta">${userTypeLabel} · 假期 ${user.conges_payes}天</div>
+                ${faceCount > 0 ? `<div class="face-count">📸 ${faceCount}张人脸</div>` : ''}
             </div>
             <div class="user-status ${user.face_registered ? 'status-registered' : 'status-unregistered'}">${status}</div>
         `;
@@ -538,7 +531,265 @@ function displayUserList(users) {
         userList.appendChild(div);
     });
 }
+// ==================== 多动作活体检测 ====================
+// 随机选择一个动作（眨眼、摇头、张嘴）
+function getRandomAction() {
+    const actions = ['blink', 'shake', 'mouth'];
+    const randomIndex = Math.floor(Math.random() * actions.length);
+    return actions[randomIndex];
+}
 
+// 获取动作对应的提示文本键
+function getActionTextKey(action) {
+    const map = {
+        'blink': 'liveness_blink',
+        'shake': 'liveness_shake',
+        'mouth': 'liveness_mouth'
+    };
+    return map[action];
+}
+
+// 眨眼检测
+async function detectBlink(video, timeoutMs = 8000) {
+    return new Promise((resolve) => {
+        let blinkCount = 0;
+        let eyesClosed = false;
+        let interval = null;
+        let timeout = null;
+        
+        interval = setInterval(async () => {
+            if (!video || video.paused || video.ended) return;
+            
+            try {
+                const detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks();
+                
+                if (!detection) return;
+                
+                const leftEye = detection.leftEyeOpenProbability;
+                const rightEye = detection.rightEyeOpenProbability;
+                const eyesOpen = (leftEye > 0.4 && rightEye > 0.4);
+                
+                if (!eyesOpen && !eyesClosed) {
+                    eyesClosed = true;
+                } else if (eyesOpen && eyesClosed) {
+                    blinkCount++;
+                    eyesClosed = false;
+                    
+                    if (blinkCount >= 2) {
+                        clearInterval(interval);
+                        clearTimeout(timeout);
+                        resolve(true);
+                    }
+                }
+            } catch (e) {
+                console.error('眨眼检测错误:', e);
+            }
+        }, 100);
+        
+        timeout = setTimeout(() => {
+            clearInterval(interval);
+            resolve(false);
+        }, timeoutMs);
+    });
+}
+
+// 摇头检测（检测头部偏航角变化）
+async function detectShake(video, timeoutMs = 8000) {
+    return new Promise((resolve) => {
+        let yawHistory = [];
+        let shakesDetected = 0;
+        let lastDirection = null;
+        let interval = null;
+        let timeout = null;
+        
+        interval = setInterval(async () => {
+            if (!video || video.paused || video.ended) return;
+            
+            try {
+                const detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks();
+                
+                if (!detection) return;
+                
+                // 获取头部偏航角（需要启用 faceLandmark68Net）
+                const yaw = detection.headYaw || 0;
+                yawHistory.push(yaw);
+                if (yawHistory.length > 10) yawHistory.shift();
+                
+                if (yawHistory.length >= 5) {
+                    const currentDirection = yaw > 15 ? 'right' : (yaw < -15 ? 'left' : 'center');
+                    
+                    if (currentDirection !== 'center' && currentDirection !== lastDirection) {
+                        if (lastDirection !== null) {
+                            shakesDetected++;
+                            if (shakesDetected >= 2) {
+                                clearInterval(interval);
+                                clearTimeout(timeout);
+                                resolve(true);
+                            }
+                        }
+                        lastDirection = currentDirection;
+                    } else if (currentDirection === 'center') {
+                        // 允许重新检测方向变化
+                        lastDirection = null;
+                    }
+                }
+            } catch (e) {
+                console.error('摇头检测错误:', e);
+            }
+        }, 150);
+        
+        timeout = setTimeout(() => {
+            clearInterval(interval);
+            resolve(false);
+        }, timeoutMs);
+    });
+}
+
+// 张嘴检测
+async function detectMouth(video, timeoutMs = 8000) {
+    return new Promise((resolve) => {
+        let mouthOpened = false;
+        let interval = null;
+        let timeout = null;
+        
+        interval = setInterval(async () => {
+            if (!video || video.paused || video.ended) return;
+            
+            try {
+                const detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks();
+                
+                if (!detection) return;
+                
+                // 张嘴概率
+                const mouthOpen = detection.mouthOpenProbability || 0;
+                
+                if (mouthOpen > 0.5 && !mouthOpened) {
+                    mouthOpened = true;
+                } else if (mouthOpen < 0.2 && mouthOpened) {
+                    // 完成一次张嘴动作
+                    clearInterval(interval);
+                    clearTimeout(timeout);
+                    resolve(true);
+                }
+            } catch (e) {
+                console.error('张嘴检测错误:', e);
+            }
+        }, 100);
+        
+        timeout = setTimeout(() => {
+            clearInterval(interval);
+            resolve(false);
+        }, timeoutMs);
+    });
+}
+// 多语言张嘴检测
+async function performLivenessCheck() {
+    const video = document.getElementById('video');
+    
+    // 显示提示（使用多语言）
+    const openText = t('open_mouth');
+    showStatus(openText, 'info');
+    
+    // 创建悬浮提示
+    let floatingHint = document.getElementById('floatingHint');
+    if (!floatingHint) {
+        floatingHint = document.createElement('div');
+        floatingHint.id = 'floatingHint';
+        floatingHint.style.cssText = `
+            position: fixed;
+            bottom: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            color: #ffaa00;
+            padding: 16px 24px;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: bold;
+            z-index: 10000;
+            white-space: nowrap;
+            backdrop-filter: blur(10px);
+            border: 2px solid #ffaa00;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        `;
+        document.body.appendChild(floatingHint);
+    }
+    floatingHint.textContent = openText;
+    floatingHint.style.display = 'block';
+    
+    return new Promise((resolve) => {
+        let mouthOpened = false;
+        let checkCount = 0;
+        
+        const checkInterval = setInterval(async () => {
+            if (!video || video.paused || video.ended) return;
+            
+            try {
+                const detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks();
+                
+                if (!detection) return;
+                
+                const landmarks = detection.landmarks;
+                const positions = landmarks.positions;
+                
+                if (positions.length >= 68) {
+                    const leftCorner = positions[48];
+                    const rightCorner = positions[54];
+                    const upperLip = positions[51];
+                    const lowerLip = positions[57];
+                    
+                    const mouthWidth = Math.hypot(rightCorner.x - leftCorner.x, rightCorner.y - leftCorner.y);
+                    const mouthHeight = Math.hypot(lowerLip.y - upperLip.y, lowerLip.x - upperLip.x);
+                    const mouthOpenRatio = mouthHeight / mouthWidth;
+                    
+                    // 根据日志，闭嘴时约0.4，张嘴时约1.1
+                    const isOpen = mouthOpenRatio > 0.8;
+                    const isClosed = mouthOpenRatio < 0.5;
+                    
+                    if (isOpen && !mouthOpened) {
+                        mouthOpened = true;
+                        const closeText = t('close_mouth');
+                        floatingHint.textContent = closeText;
+                        floatingHint.style.borderColor = '#00ff00';
+                        floatingHint.style.color = '#00ff00';
+                        showStatus(closeText, 'info');
+                        console.log('✅ 检测到张嘴');
+                    } else if (isClosed && mouthOpened) {
+                        clearInterval(checkInterval);
+                        clearTimeout(timeout);
+                        if (floatingHint) floatingHint.style.display = 'none';
+                        showStatus(t('liveness_success'), 'success');
+                        resolve(true);
+                    }
+                }
+                
+                checkCount++;
+                if (checkCount > 50) {
+                    floatingHint.style.background = 'rgba(255,0,0,0.85)';
+                    floatingHint.style.borderColor = '#ff0000';
+                }
+                
+            } catch (e) {
+                console.error('张嘴检测错误:', e);
+            }
+        }, 100);
+        
+        const timeout = setTimeout(() => {
+            clearInterval(checkInterval);
+            if (floatingHint) floatingHint.style.display = 'none';
+            showStatus(t('liveness_timeout'), 'error');
+            resolve(false);
+        }, 10000);
+    });
+}
 // 选择员工
 function selectUser(user) {
     selectedUserId = user.id;
@@ -561,7 +812,6 @@ function resetRegistration() {
     document.getElementById('registerBtn').disabled = true;
 }
 
-// 录入人脸
 async function registerFace() {
     if (!selectedUserId) {
         showStatus('请先选择员工', 'error');
@@ -586,23 +836,46 @@ async function registerFace() {
             return;
         }
 
-        const features = Array.from(detection.descriptor);
-
+        const newFeatures = Array.from(detection.descriptor);
+        
+        // 获取当前员工已有的特征数组
+        const { data: user, error: fetchError } = await supabase
+            .from('users')
+            .select('face_features_array')
+            .eq('id', selectedUserId)
+            .single();
+        
+        if (fetchError) throw fetchError;
+        
+        let existingFeatures = user?.face_features_array || [];
+        
+        // 限制最多存储 5 张（可根据需要调整）
+        if (existingFeatures.length >= 5) {
+            const confirm = await showConfirm('限制', '该员工已录入 5 张人脸，是否覆盖最早的一张？');
+            if (confirm) {
+                existingFeatures.shift(); // 移除最早的一张
+            } else {
+                return;
+            }
+        }
+        
+        existingFeatures.push(newFeatures);
+        
+        // 更新数据库
         const { error } = await supabase
             .from('users')
             .update({
-                face_features: features,
+                face_features_array: existingFeatures,
                 face_registered: true
             })
             .eq('id', selectedUserId);
 
         if (error) throw error;
 
-        showStatus('录入成功', 'success');
+        showStatus('人脸录入成功', 'success');
         await loadAllUsers();
         document.getElementById('registerBtn').disabled = true;
         selectedUserId = null;
-        
         stopCamera();
 
     } catch (error) {

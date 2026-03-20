@@ -193,6 +193,12 @@ body {
 }
 
 /* ==================== 摄像头容器（移动端核心）==================== */
+
+
+.video-container.small {
+    max-width: 400px;
+    margin: 0 auto 20px;
+}
 .video-container {
     position: relative;
     width: 100%;
@@ -205,10 +211,21 @@ body {
     margin-bottom: 20px;
     border: 2px solid rgba(255, 255, 255, 0.2);
 }
-
-.video-container.small {
-    max-width: 400px;
-    margin: 0 auto 20px;
+/* 活体检测提示样式 */
+.liveness-prompt {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 50px;
+    font-size: 16px;
+    z-index: 100;
+    white-space: nowrap;
+    backdrop-filter: blur(10px);
+    pointer-events: none;
 }
 
 #video {
