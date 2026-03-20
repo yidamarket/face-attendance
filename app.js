@@ -173,9 +173,7 @@ function stopCamera() {
     
     updateGlobalVars();
 }
-
-// 关键点检测 - 基于测试成功的版本
-// 关键点检测 - 完全复制测试页面的成功版本
+// 关键点检测 - 移动端适配版
 function startLandmarkDetection() {
     console.log('startLandmarkDetection 开始执行');
     
@@ -199,11 +197,47 @@ function startLandmarkDetection() {
         return;
     }
     
-    console.log('视频尺寸:', video.videoWidth, video.videoHeight);
+    console.log('视频内部尺寸:', video.videoWidth, video.videoHeight);
+    
+    // 获取视频容器的实际显示尺寸
+    const containerRect = video.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+    
+    // 设置画布尺寸与视频内部尺寸一致（用于绘制关键点）
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     
     const ctx = canvas.getContext('2d');
+    
+    // 计算视频在容器中的实际显示区域（考虑 object-fit: cover）
+    // 视频可能被裁剪，我们需要计算出显示区域在完整视频中的对应矩形
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const containerAspect = containerWidth / containerHeight;
+    
+    let displayWidth, displayHeight, offsetX, offsetY;
+    
+    if (videoAspect > containerAspect) {
+        // 视频更宽，宽度填满容器，高度被裁剪
+        displayWidth = video.videoWidth;
+        displayHeight = video.videoWidth / containerAspect;
+        offsetX = 0;
+        offsetY = (video.videoHeight - displayHeight) / 2;
+    } else {
+        // 视频更高，高度填满容器，宽度被裁剪
+        displayWidth = video.videoHeight * containerAspect;
+        displayHeight = video.videoHeight;
+        offsetX = (video.videoWidth - displayWidth) / 2;
+        offsetY = 0;
+    }
+    
+    // 绘制关键点时的坐标映射函数
+    function mapPointToCanvas(point) {
+        // 将点坐标从完整视频空间映射到显示区域空间
+        const mappedX = (point.x - offsetX) / displayWidth * canvas.width;
+        const mappedY = (point.y - offsetY) / displayHeight * canvas.height;
+        return { x: mappedX, y: mappedY };
+    }
     
     async function detect() {
         if (!isCameraActive || !video || video.paused || video.ended) {
@@ -212,13 +246,27 @@ function startLandmarkDetection() {
         }
         
         try {
-            // 确保画布尺寸与视频一致
+            // 确保画布尺寸与视频内部尺寸一致（可能因旋转变化）
             if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
+                // 重新计算显示区域（因为视频尺寸变了）
+                const newVideoAspect = video.videoWidth / video.videoHeight;
+                const newContainerAspect = containerWidth / containerHeight;
+                if (newVideoAspect > newContainerAspect) {
+                    displayWidth = video.videoWidth;
+                    displayHeight = video.videoWidth / newContainerAspect;
+                    offsetX = 0;
+                    offsetY = (video.videoHeight - displayHeight) / 2;
+                } else {
+                    displayWidth = video.videoHeight * newContainerAspect;
+                    displayHeight = video.videoHeight;
+                    offsetX = (video.videoWidth - displayWidth) / 2;
+                    offsetY = 0;
+                }
             }
             
-            // 检测人脸和关键点 - 完全复制测试页面
+            // 检测人脸和关键点
             const detections = await faceapi
                 .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
                 .withFaceLandmarks();
@@ -229,29 +277,40 @@ function startLandmarkDetection() {
             if (detections.length > 0) {
                 console.log(`检测到 ${detections.length} 张人脸`);
                 
-                detections.forEach((detection, idx) => {
+                detections.forEach((detection) => {
                     const box = detection.detection.box;
                     const points = detection.landmarks.positions;
                     
-                    // 绘制人脸框 - 红色粗线（测试页面用的红色）
+                    // 映射人脸框坐标
+                    const topLeft = mapPointToCanvas({ x: box.x, y: box.y });
+                    const bottomRight = mapPointToCanvas({ x: box.x + box.width, y: box.y + box.height });
+                    const mappedBoxWidth = bottomRight.x - topLeft.x;
+                    const mappedBoxHeight = bottomRight.y - topLeft.y;
+                    
+                    // 绘制人脸框 - 红色粗线
                     ctx.strokeStyle = '#ff0000';
                     ctx.lineWidth = 5;
-                    ctx.strokeRect(box.x, box.y, box.width, box.height);
+                    ctx.strokeRect(topLeft.x, topLeft.y, mappedBoxWidth, mappedBoxHeight);
                     
                     // 再画一个白色虚线框
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
                     ctx.setLineDash([5, 5]);
-                    ctx.strokeRect(box.x, box.y, box.width, box.height);
+                    ctx.strokeRect(topLeft.x, topLeft.y, mappedBoxWidth, mappedBoxHeight);
                     ctx.setLineDash([]);
                     
-                    // 绘制68个关键点 - 亮绿色大点
+                    // 根据视频宽度动态调整点的大小
+                    const pointSize = Math.max(2, Math.min(5, video.videoWidth / 150));
+                    
+                    // 绘制68个关键点
                     points.forEach(point => {
+                        const mappedPoint = mapPointToCanvas(point);
+                        
                         ctx.fillStyle = '#00ff00';
                         ctx.shadowColor = '#00ff00';
-                        ctx.shadowBlur = 15;
+                        ctx.shadowBlur = 10;
                         ctx.beginPath();
-                        ctx.arc(point.x, point.y, 5, 0, 2 * Math.PI);
+                        ctx.arc(mappedPoint.x, mappedPoint.y, pointSize, 0, 2 * Math.PI);
                         ctx.fill();
                         
                         // 加白边
@@ -275,13 +334,16 @@ function startLandmarkDetection() {
     
     detect();
 }
-// 检查登录并记录
+// 检查是否已识别员工，然后记录打卡
 function checkLoginThenRecord(actionType) {
-    const session = loadSession();
-    if (!session) {
-        document.getElementById('loginModal').style.display = 'flex';
+    if (!currentUser) {
+        // 如果没有人脸识别，提示用户先识别
+        showStatus('请先进行人脸识别', 'error');
+        // 或者可以选择显示登录模态框（如果需要登录才能打卡，但这里不需要）
+        // document.getElementById('loginModal').style.display = 'flex';
         return;
     }
+    // 直接调用打卡记录函数
     record(actionType);
 }
 
