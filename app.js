@@ -353,7 +353,7 @@ async function identify() {
         
         let bestMatch = null;
         let highestSimilarity = 0;
-        const threshold = 0.7;
+        const threshold = 0.9;
         
         for (const user of users) {
             const featuresArray = user.face_features_array || [];
