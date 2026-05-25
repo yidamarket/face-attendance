@@ -1,14 +1,5 @@
-// app.js - 严格版（完整三语支持 + 陌生人拒识）
-// 核心优化：
-// 1. normalize 归一化
-// 2. 平均向量（中心脸）
-// 3. 自动采样注册（5张）
-// 4. 帧检测节流
-// 5. 去掉不稳定的 cosine fallback
-// 6. 动画帧清理机制
-// 7. 全局状态统一管理
-// 8. 重试机制
-// 9. 严格版陌生人拒识
+// app.js - 完整优化版
+// 功能：SSD模型 + 特征缓存 + 批量计算 + 点头检测 + 超精致画点 + 多姿势录入 + 三语支持
 
 // ==================== 全局状态管理 ====================
 const AppState = {
@@ -23,7 +14,11 @@ const AppState = {
         faceapiLoaded: false,
         animationFrameId: null,
         detectionIntervalId: null,
-        floatingHint: null
+        floatingHint: null,
+        cachedUsers: null,
+        cacheTime: null,
+        isRegistering: false,
+        registerSamples: []
     },
     
     get(key) { return this._data[key]; },
@@ -58,87 +53,43 @@ const AppState = {
     }
 };
 
-// 初始化 window 全局变量
-if (typeof window.modelsLoaded === 'undefined') {
-    window.modelsLoaded = false;
-    window.currentUser = null;
-    window.allUsers = [];
-    window.selectedUserId = null;
-    window.stream = null;
-    window.autoCloseTimer = null;
-    window.isCameraActive = false;
-    window.faceapiLoaded = false;
-}
+// 缓存配置
+const CACHE_DURATION = 60000; // 1分钟缓存
 
-AppState.update({
-    modelsLoaded: window.modelsLoaded,
-    currentUser: window.currentUser,
-    allUsers: window.allUsers,
-    selectedUserId: window.selectedUserId,
-    stream: window.stream,
-    autoCloseTimer: window.autoCloseTimer,
-    isCameraActive: window.isCameraActive,
-    faceapiLoaded: window.faceapiLoaded
-});
-
-// 兼容旧代码
-var modelsLoaded = () => AppState.get('modelsLoaded');
-var currentUser = () => AppState.get('currentUser');
-var allUsers = () => AppState.get('allUsers');
-var selectedUserId = () => AppState.get('selectedUserId');
-var stream = () => AppState.get('stream');
-var autoCloseTimer = () => AppState.get('autoCloseTimer');
-var isCameraActive = () => AppState.get('isCameraActive');
-var faceapiLoaded = () => AppState.get('faceapiLoaded');
-
-function updateGlobalVars() {
-    window.modelsLoaded = AppState.get('modelsLoaded');
-    window.currentUser = AppState.get('currentUser');
-    window.allUsers = AppState.get('allUsers');
-    window.selectedUserId = AppState.get('selectedUserId');
-    window.stream = AppState.get('stream');
-    window.autoCloseTimer = AppState.get('autoCloseTimer');
-    window.isCameraActive = AppState.get('isCameraActive');
-    window.faceapiLoaded = AppState.get('faceapiLoaded');
-}
-
-// ==================== 人脸识别配置（严格版） ====================
+// 识别配置
 const RECOGNITION_CONFIG = {
-    // 绝对距离阈值 - 必须小于0.48才考虑匹配
     ABSOLUTE_THRESHOLD: 0.48,
-    
-    // 绝对拒绝阈值 - 超过0.55直接拒绝
     ABSOLUTE_REJECT_THRESHOLD: 0.55,
-    
-    // Top-2 最小差距 - 第一名必须比第二名好0.08以上
     MIN_MARGIN: 0.08,
-    
-    // 比值阈值 - 最佳/第二必须小于0.85
     MAX_RATIO: 0.85,
-    
-    // 最小特征数量 - 用户至少需要3张注册照
-    MIN_FEATURES_COUNT: 3,
-    
-    // 是否启用平均脸
-    USE_AVERAGE_FACE: false,
-    
-    // 识别重试次数
-    MAX_RETRIES: 2
+    MIN_FEATURES_COUNT: 2,
+    MAX_RETRIES: 2,
+    BEARD_THRESHOLD: 0.55  // 胡子员工宽松阈值
 };
 
-const REGISTER_SAMPLE_COUNT = 5;
-const REGISTER_SAMPLE_INTERVAL = 300;
+// 录入配置
+const REGISTER_SAMPLE_COUNT = 6;  // 6个不同姿势
+const REGISTER_SAMPLE_INTERVAL = 500;
 const DETECTION_THROTTLE_MS = 100;
 const MODEL_LOAD_RETRIES = 2;
 
-// 工具函数
+// 多姿势引导配置
+const REGISTER_POSES = [
+    { text: 'pose_face_front', emoji: '😀', delay: 500 },
+    { text: 'pose_look_up', emoji: '🙂', delay: 500 },
+    { text: 'pose_look_down', emoji: '🙃', delay: 500 },
+    { text: 'pose_look_left', emoji: '😐', delay: 500 },
+    { text: 'pose_look_right', emoji: '😊', delay: 500 },
+    { text: 'pose_smile', emoji: '😁', delay: 500 }
+];
+
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function checkFaceApi() {
     return typeof faceapi !== 'undefined' && faceapi !== null;
 }
 
-// ==================== 向量归一化 ====================
+// ==================== 向量计算函数 ====================
 function normalize(vec) {
     if (!vec || vec.length === 0) return vec;
     const norm = Math.sqrt(vec.reduce((sum, v) => sum + v * v, 0));
@@ -146,33 +97,63 @@ function normalize(vec) {
     return vec.map(v => v / norm);
 }
 
-// ==================== 平均特征向量 ====================
 function averageFeatures(featuresArray) {
     if (!featuresArray || featuresArray.length === 0) return null;
-    
     const dim = featuresArray[0].length;
     const avg = new Array(dim).fill(0);
-    
     for (const f of featuresArray) {
-        for (let i = 0; i < dim; i++) {
-            avg[i] += f[i];
-        }
+        for (let i = 0; i < dim; i++) avg[i] += f[i];
     }
-    
     return normalize(avg.map(v => v / featuresArray.length));
 }
 
-function euclideanDistance(features1, features2) {
-    if (!features1 || !features2 || features1.length !== features2.length) {
-        return Infinity;
-    }
-    
+function euclideanDistance(f1, f2) {
+    if (!f1 || !f2) return Infinity;
     let sum = 0;
-    for (let i = 0; i < features1.length; i++) {
-        const diff = features1[i] - features2[i];
+    for (let i = 0; i < f1.length; i++) {
+        const diff = f1[i] - f2[i];
         sum += diff * diff;
     }
     return Math.sqrt(sum);
+}
+
+// ==================== 带缓存的用户获取 ====================
+async function getUsersWithCache() {
+    const now = Date.now();
+    const cached = AppState.get('cachedUsers');
+    const cacheTime = AppState.get('cacheTime');
+    
+    if (cached && cacheTime && (now - cacheTime) < CACHE_DURATION) {
+        console.log('📦 使用缓存用户数据');
+        return cached;
+    }
+    
+    console.log('🔄 从数据库加载用户数据');
+    const { data, error } = await supabase
+        .from('users')
+        .select('id, username, user_type, conges_payes, face_features_array')
+        .eq('face_registered', true);
+    
+    if (error) throw error;
+    
+    const processed = (data || []).map(user => {
+        const features = (user.face_features_array || []).filter(f => f && f.length > 0);
+        return { 
+            ...user, 
+            face_features_array: features, 
+            avg_feature: averageFeatures(features) 
+        };
+    }).filter(u => u.face_features_array.length >= RECOGNITION_CONFIG.MIN_FEATURES_COUNT);
+    
+    AppState.set('cachedUsers', processed);
+    AppState.set('cacheTime', now);
+    return processed;
+}
+
+function clearUserCache() {
+    AppState.set('cachedUsers', null);
+    AppState.set('cacheTime', null);
+    console.log('🗑️ 用户缓存已清除');
 }
 
 // ==================== 初始化 ====================
@@ -182,12 +163,12 @@ window.addEventListener('load', async function() {
     document.querySelectorAll('.lang-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.lang === currentLanguage);
     });
-
+    
     if (!checkFaceApi()) {
         showStatus('error_faceapi', 'error');
         return;
     }
-
+    
     await loadModels();
     await loadAllUsers();
     
@@ -212,7 +193,7 @@ window.addEventListener('load', async function() {
 async function loadModels(retryCount = 0) {
     try {
         showStatus('loading', 'info');
-        console.log('开始加载模型');
+        console.log('开始加载模型...');
         
         await Promise.all([
             faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@latest/model/'),
@@ -221,8 +202,7 @@ async function loadModels(retryCount = 0) {
         ]);
         
         AppState.set('modelsLoaded', true);
-        updateGlobalVars();
-        console.log('模型加载成功');
+        console.log('✅ 模型加载成功');
         showStatus('success', 'success');
         return true;
     } catch (error) {
@@ -242,48 +222,30 @@ async function loadModels(retryCount = 0) {
 async function startCamera() {
     console.log('startCamera 被调用');
     const video = document.getElementById('video');
-    if (!video) {
-        console.log('video元素不存在');
-        return false;
-    }
+    if (!video) return false;
     
     try {
-        const currentStream = AppState.get('stream');
-        if (currentStream) {
-            console.log('关闭现有摄像头');
-            stopCamera();
+        if (AppState.get('stream')) {
+            AppState.get('stream').getTracks().forEach(track => track.stop());
         }
         
-        console.log('请求摄像头权限');
-        const newStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                width: { ideal: 640 },
-                height: { ideal: 480 },
-                facingMode: 'user'
-            } 
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 640, height: 480, facingMode: 'user' }
         });
         
-        video.srcObject = newStream;
-        AppState.set('stream', newStream);
+        video.srcObject = stream;
+        AppState.set('stream', stream);
         AppState.set('isCameraActive', true);
-        console.log('摄像头已启动');
         
         const container = document.querySelector('.video-container');
-        if (container) {
-            container.style.display = 'block';
-        }
+        if (container) container.style.display = 'block';
         
         await new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                video.play();
-            };
-            video.onplay = () => {
-                resolve();
-            };
+            video.onloadedmetadata = () => video.play();
+            video.onplay = () => resolve();
         });
         
-        startLandmarkDetection();
-        updateGlobalVars();
+        startFrameDetection();
         return true;
     } catch (error) {
         console.error('摄像头启动失败:', error);
@@ -300,131 +262,156 @@ function stopCamera() {
         AppState.set('animationFrameId', null);
     }
     
-    const video = document.getElementById('video');
-    const currentStream = AppState.get('stream');
-    if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
+    if (AppState.get('stream')) {
+        AppState.get('stream').getTracks().forEach(track => track.stop());
         AppState.set('stream', null);
     }
-    if (video) {
-        video.srcObject = null;
-    }
+    
+    const video = document.getElementById('video');
+    if (video) video.srcObject = null;
+    
     AppState.set('isCameraActive', false);
     
     const container = document.querySelector('.video-container');
-    if (container) {
-        container.style.display = 'none';
-    }
+    if (container) container.style.display = 'none';
     
     const canvas = document.getElementById('overlay');
     if (canvas) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-    
-    updateGlobalVars();
 }
 
-// ==================== 帧检测 ====================
-function startLandmarkDetection() {
-    if (AppState.get('animationFrameId')) {
-        cancelAnimationFrame(AppState.get('animationFrameId'));
-        AppState.set('animationFrameId', null);
-    }
-    
-    if (!AppState.get('modelsLoaded') || !checkFaceApi() || !AppState.get('isCameraActive')) return;
+// ==================== 超精致版人脸关键点绘制 ====================
+function startFrameDetection() {
+    if (AppState.get('animationFrameId')) cancelAnimationFrame(AppState.get('animationFrameId'));
+    if (!AppState.get('modelsLoaded')) return;
     
     const video = document.getElementById('video');
     const canvas = document.getElementById('overlay');
     if (!video || !canvas) return;
-    if (video.videoWidth === 0) { 
-        setTimeout(startLandmarkDetection, 100); 
-        return; 
-    }
-
-    let lastWidth = 0, lastHeight = 0;
-    let lastFrameTime = 0;
-
+    
     const detect = async () => {
         if (!AppState.get('isCameraActive') || video.paused || video.ended) {
             AppState.set('animationFrameId', requestAnimationFrame(detect));
             return;
         }
-
-        const now = Date.now();
-        if (now - lastFrameTime < DETECTION_THROTTLE_MS) {
-            AppState.set('animationFrameId', requestAnimationFrame(detect));
-            return;
-        }
-        lastFrameTime = now;
-
-        const containerWidth = video.clientWidth;
-        const containerHeight = video.clientHeight;
-
-        if (lastWidth !== containerWidth || lastHeight !== containerHeight) {
-            canvas.width = containerWidth;
-            canvas.height = containerHeight;
-            lastWidth = containerWidth;
-            lastHeight = containerHeight;
-        }
-
-        const ctx = canvas.getContext('2d');
-        const vw = video.videoWidth, vh = video.videoHeight;
-        const scaleX = containerWidth / vw;
-        const scaleY = containerHeight / vh;
-        const scale = Math.max(scaleX, scaleY);
-        const scaledW = vw * scale;
-        const scaledH = vh * scale;
-        const offsetX = (containerWidth - scaledW) / 2;
-        const offsetY = (containerHeight - scaledH) / 2;
-
-        function map(x, y) {
-            return { x: offsetX + x * scale, y: offsetY + y * scale };
-        }
-
+        
         try {
-            const detections = await faceapi
-                .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-                .withFaceLandmarks();
-
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+            
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.clientWidth;
+            canvas.height = video.clientHeight;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            if (detections.length) {
-                detections.forEach(d => {
-                    const box = d.detection.box;
-                    const tl = map(box.x, box.y);
-                    const br = map(box.x + box.width, box.y + box.height);
-                    const w = br.x - tl.x;
-                    const h = br.y - tl.y;
-
-                    ctx.strokeStyle = '#ff0000';
-                    ctx.lineWidth = 4;
-                    ctx.strokeRect(tl.x, tl.y, w, h);
-
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([5, 5]);
-                    ctx.strokeRect(tl.x, tl.y, w, h);
-                    ctx.setLineDash([]);
-
-                    const pointSize = Math.max(4, Math.min(12, w / 25));
-
-                    d.landmarks.positions.forEach(p => {
-                        const mp = map(p.x, p.y);
-                        ctx.fillStyle = '#00ff00';
-                        ctx.shadowColor = '#00ff00';
-                        ctx.shadowBlur = 10;
-                        ctx.beginPath();
-                        ctx.arc(mp.x, mp.y, pointSize, 0, 2 * Math.PI);
-                        ctx.fill();
-                        ctx.shadowBlur = 0;
-                        ctx.strokeStyle = '#ffffff';
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
-                    });
+            
+            const scaleX = canvas.width / video.videoWidth;
+            const scaleY = canvas.height / video.videoHeight;
+            
+            detections.forEach(d => {
+                const box = d.detection.box;
+                const x = box.x * scaleX;
+                const y = box.y * scaleY;
+                const w = box.width * scaleX;
+                const h = box.height * scaleY;
+                const faceWidth = w;
+                
+                // 人脸框 - 双层精致边框
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 2.5;
+                ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.2;
+                ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+                
+                // 四个角装饰
+                ctx.strokeStyle = '#00ff88';
+                ctx.lineWidth = 2;
+                const cornerLen = Math.min(15, w * 0.1);
+                ctx.beginPath();
+                ctx.moveTo(x, y + cornerLen);
+                ctx.lineTo(x, y);
+                ctx.lineTo(x + cornerLen, y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x + w - cornerLen, y);
+                ctx.lineTo(x + w, y);
+                ctx.lineTo(x + w, y + cornerLen);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x, y + h - cornerLen);
+                ctx.lineTo(x, y + h);
+                ctx.lineTo(x + cornerLen, y + h);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x + w - cornerLen, y + h);
+                ctx.lineTo(x + w, y + h);
+                ctx.lineTo(x + w, y + h - cornerLen);
+                ctx.stroke();
+                
+                // 自适应点大小
+                let basePointSize = Math.max(1.3, Math.min(2.8, faceWidth / 75));
+                
+                // 绘制超精致关键点
+                d.landmarks.positions.forEach((p, idx) => {
+                    const px = p.x * scaleX;
+                    const py = p.y * scaleY;
+                    
+                    let pointColor = '#44ff44';
+                    let pointSize = basePointSize;
+                    
+                    if (idx >= 36 && idx <= 47) {
+                        pointColor = '#44ccff';
+                        pointSize = basePointSize * 1.15;
+                    } else if (idx >= 27 && idx <= 35) {
+                        pointColor = '#ffaa44';
+                        pointSize = basePointSize * 1.0;
+                    } else if (idx >= 48 && idx <= 67) {
+                        pointColor = '#ff66cc';
+                        pointSize = basePointSize * 0.95;
+                    } else if (idx >= 17 && idx <= 26) {
+                        pointColor = '#44ffaa';
+                        pointSize = basePointSize * 0.9;
+                    } else {
+                        pointColor = '#44ff44';
+                        pointSize = basePointSize * 0.92;
+                    }
+                    
+                    let glowSize = pointSize * 2.2;
+                    
+                    // 光晕
+                    const gradient = ctx.createRadialGradient(px, py, 0, px, py, glowSize);
+                    gradient.addColorStop(0, pointColor);
+                    gradient.addColorStop(0.4, pointColor + '99');
+                    gradient.addColorStop(0.7, pointColor + '44');
+                    gradient.addColorStop(1, pointColor + '00');
+                    ctx.beginPath();
+                    ctx.fillStyle = gradient;
+                    ctx.arc(px, py, glowSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // 主点
+                    ctx.beginPath();
+                    ctx.fillStyle = pointColor;
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = pointColor;
+                    ctx.arc(px, py, pointSize, 0, 2 * Math.PI);
+                    ctx.fill();
+                    
+                    // 高光
+                    ctx.beginPath();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowBlur = 0;
+                    ctx.arc(px - pointSize * 0.3, py - pointSize * 0.3, pointSize * 0.35, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.fillStyle = '#ffffffdd';
+                    ctx.arc(px - pointSize * 0.1, py - pointSize * 0.15, pointSize * 0.12, 0, 2 * Math.PI);
+                    ctx.fill();
                 });
-            }
-        } catch (e) {}
+            });
+            ctx.shadowBlur = 0;
+        } catch(e) {}
         
         AppState.set('animationFrameId', requestAnimationFrame(detect));
     };
@@ -432,284 +419,244 @@ function startLandmarkDetection() {
     AppState.set('animationFrameId', requestAnimationFrame(detect));
 }
 
-function checkLoginThenRecord(actionType) {
-    if (!AppState.get('currentUser')) {
-        showStatus('hint_select_employee_first', 'error');
-        return;
+// ==================== 点头活体检测 ====================
+async function performLivenessCheck() {
+    const video = document.getElementById('video');
+    
+    let floatingHint = AppState.get('floatingHint');
+    if (!floatingHint) {
+        floatingHint = document.createElement('div');
+        floatingHint.id = 'floatingHint';
+        floatingHint.style.cssText = `
+            position: fixed;
+            bottom: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.85);
+            color: #ffaa00;
+            padding: 16px 24px;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: bold;
+            z-index: 10000;
+            white-space: nowrap;
+            backdrop-filter: blur(10px);
+            border: 2px solid #ffaa00;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        `;
+        document.body.appendChild(floatingHint);
+        AppState.set('floatingHint', floatingHint);
     }
-    record(actionType);
+    
+    return new Promise((resolve) => {
+        let nodDetected = false;
+        let headYHistory = [];
+        let requiredNods = 1;
+        let nodCount = 0;
+        
+        floatingHint.textContent = t('nod_instruction') || '🙂 请轻轻点头一下';
+        floatingHint.style.display = 'block';
+        floatingHint.style.borderColor = '#ffaa00';
+        floatingHint.style.color = '#ffaa00';
+        
+        const checkInterval = setInterval(async () => {
+            if (!video || video.paused || video.ended) return;
+            
+            try {
+                const detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks();
+                
+                if (!detection) return;
+                
+                const noseTip = detection.landmarks.getNose();
+                if (!noseTip || noseTip.length < 1) return;
+                
+                const currentY = noseTip[0].y;
+                headYHistory.push(currentY);
+                if (headYHistory.length > 15) headYHistory.shift();
+                
+                if (headYHistory.length >= 10) {
+                    const maxY = Math.max(...headYHistory);
+                    const minY = Math.min(...headYHistory);
+                    const deltaY = maxY - minY;
+                    
+                    if (deltaY > 8 && !nodDetected) {
+                        nodDetected = true;
+                        nodCount++;
+                        floatingHint.textContent = `✅ ${t('nod_success') || '点头'} ${nodCount}/${requiredNods}`;
+                        floatingHint.style.borderColor = '#00ff00';
+                        floatingHint.style.color = '#00ff00';
+                        
+                        if (nodCount >= requiredNods) {
+                            clearInterval(checkInterval);
+                            clearTimeout(timeout);
+                            // 活体检测成功提示
+                            floatingHint.textContent = '✅ ' + (t('liveness_success') || '活体检测通过！');
+                            showStatus('liveness_success', 'success');
+                            // 1秒后关闭悬浮提示
+                            setTimeout(() => {
+                                if (floatingHint) floatingHint.style.display = 'none';
+                            }, 1000);
+                            resolve(true);
+                        } else {
+                            setTimeout(() => {
+                                nodDetected = false;
+                                floatingHint.textContent = t('nod_again') || '🙂 请再次轻轻点头';
+                                floatingHint.style.borderColor = '#ffaa00';
+                                floatingHint.style.color = '#ffaa00';
+                            }, 500);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('点头检测错误:', e);
+            }
+        }, 100);
+        
+        const timeout = setTimeout(() => {
+            clearInterval(checkInterval);
+            if (floatingHint) floatingHint.style.display = 'none';
+            showStatus('liveness_timeout', 'error');
+            resolve(false);
+        }, 10000);
+    });
 }
-
-function closeLoginModal() {
-    document.getElementById('loginModal').style.display = 'none';
-}
-
-// ==================== 识别 - 严格版 ====================
+// ==================== 人脸识别函数 ====================
 async function identify(retryCount = 0) {
-    console.log('========== 🔍 开始人脸识别（严格版） ==========');
-    console.log(`重试次数: ${retryCount}/${RECOGNITION_CONFIG.MAX_RETRIES}`);
+    console.log('========== 🔍 开始人脸识别 ==========');
     
     if (!AppState.get('modelsLoaded')) {
-        showStatus('error_model', 'error');
+        showStatus(t('error_model'), 'error');
         return;
     }
     
     if (!AppState.get('isCameraActive')) {
-        console.log('📷 摄像头未启动，正在启动...');
         await startCamera();
-        
-        const video = document.getElementById('video');
-        await new Promise((resolve) => {
-            const checkReady = () => {
-                if (video.videoWidth > 0 && video.videoHeight > 0) {
-                    requestAnimationFrame(() => {
-                        requestAnimationFrame(() => {
-                            setTimeout(resolve, 100);
-                        });
-                    });
-                } else {
-                    requestAnimationFrame(checkReady);
-                }
-            };
-            checkReady();
-        });
-        console.log('✅ 摄像头已启动');
+        await delay(500);
     }
     
-    console.log('👄 开始活体检测...');
+    // 点头活体检测
     const livenessPassed = await performLivenessCheck();
     if (!livenessPassed) {
-        console.log('❌ 活体检测失败');
         stopCamera();
         return;
     }
-    console.log('✅ 活体检测通过');
     
     const video = document.getElementById('video');
-    showStatus('detecting', 'info');
+    showStatus(t('detecting'), 'info');
     
     try {
-        console.log('📸 检测人脸并提取特征...');
         const detection = await faceapi
             .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
             .withFaceLandmarks()
             .withFaceDescriptor();
 
         if (!detection) {
-            console.log('❌ 未检测到人脸');
             if (retryCount < RECOGNITION_CONFIG.MAX_RETRIES) {
-                console.log(`🔄 重试识别 (${retryCount + 1}/${RECOGNITION_CONFIG.MAX_RETRIES})...`);
-                showStatus('detect_failed_retry', 'warning');
+                showStatus(t('detect_failed_retry'), 'warning');
                 await delay(500);
                 return identify(retryCount + 1);
             }
-            showStatus('no_face_detected', 'error');
+            showStatus(t('no_face_detected'), 'error');
             return;
         }
-        console.log('✅ 人脸检测成功');
 
         const currentFeatures = normalize(Array.from(detection.descriptor));
-        const featureNorm = Math.sqrt(currentFeatures.reduce((sum, v) => sum + v * v, 0));
-        console.log(`📊 当前特征范数: ${featureNorm.toFixed(4)} (应为 1.0)`);
-        
-        console.log('👥 获取已注册用户...');
-        const { data: users, error } = await supabase
-            .from('users')
-            .select('id, username, user_type, conges_payes, face_features_array')
-            .eq('face_registered', true);
-        
-        if (error) throw error;
+        const users = await getUsersWithCache();
         
         if (!users || users.length === 0) {
-            console.log('❌ 暂无已注册员工');
-            showStatus('no_registered_users', 'error');
+            showStatus(t('no_registered_users'), 'error');
             return;
         }
-        console.log(`✅ 找到 ${users.length} 个已注册用户`);
         
-        console.log('📏 计算特征距离...');
+        // 批量计算距离
         const distances = [];
-        
         for (const user of users) {
-            const featuresArray = user.face_features_array || [];
-            const validFeatures = featuresArray.filter(f => f && f.length > 0);
+            let minDist = Infinity;
             
-            if (validFeatures.length < RECOGNITION_CONFIG.MIN_FEATURES_COUNT) {
-                console.log(`⚠️ 用户 ${user.username} 特征不足 (${validFeatures.length}/${RECOGNITION_CONFIG.MIN_FEATURES_COUNT})，跳过`);
-                continue;
+            // 优先使用平均特征
+            if (user.avg_feature) {
+                minDist = euclideanDistance(currentFeatures, user.avg_feature);
+            } else {
+                for (const f of user.face_features_array) {
+                    const dist = euclideanDistance(currentFeatures, f);
+                    if (dist < minDist) minDist = dist;
+                }
             }
             
-            const normalizedArray = validFeatures.map(f => {
-                return f._normalized ? f : normalize(f);
+            distances.push({ 
+                user: user, 
+                distance: minDist, 
+                featureCount: user.face_features_array.length 
             });
-            
-            const distancesToUser = normalizedArray.map(f => 
-                euclideanDistance(currentFeatures, f)
-            );
-            const userDistance = Math.min(...distancesToUser);
-            
-            distances.push({
-                user,
-                distance: userDistance,
-                featureCount: validFeatures.length
-            });
-            
-            console.log(`  ${user.username}: 距离=${userDistance.toFixed(4)} (基于${validFeatures.length}个特征)`);
         }
         
         distances.sort((a, b) => a.distance - b.distance);
-        
-        if (distances.length === 0) {
-            console.log('❌ 无有效用户数据');
-            showStatus('no_valid_user_data', 'error');
-            return;
-        }
-        
         const best = distances[0];
         const second = distances[1] || null;
         
-        console.log('========== 🏆 匹配结果 ==========');
-        console.log(`🥇 第一名: ${best.user.username}`);
-        console.log(`   距离: ${best.distance.toFixed(4)}`);
-        console.log(`   特征数: ${best.featureCount}`);
+        console.log(`🥇 最佳匹配: ${best.user.username}, 距离=${best.distance.toFixed(4)}`);
         
-        if (second) {
-            console.log(`🥈 第二名: ${second.user.username}`);
-            console.log(`   距离: ${second.distance.toFixed(4)}`);
-            console.log(`   特征数: ${second.featureCount}`);
-            console.log(`   Margin: ${(second.distance - best.distance).toFixed(4)}`);
-            console.log(`   Ratio: ${(best.distance / second.distance).toFixed(4)}`);
-        }
+        // 胡子员工特殊处理（可根据用户类型或名字判断）
+        const isBeardUser = best.user.user_type === 'chauffeur' || 
+                            best.user.username.includes('胡') ||
+                            best.user.username.includes('Beard');
+        const threshold = isBeardUser ? RECOGNITION_CONFIG.BEARD_THRESHOLD : RECOGNITION_CONFIG.ABSOLUTE_THRESHOLD;
         
-        // ========== 严格版判决逻辑 ==========
-        
-        // 🚨 第一关：绝对拒绝检查
+        // 绝对拒绝检查
         if (best.distance > RECOGNITION_CONFIG.ABSOLUTE_REJECT_THRESHOLD) {
-            console.log(`❌ 拒绝: 距离=${best.distance.toFixed(3)} > ${RECOGNITION_CONFIG.ABSOLUTE_REJECT_THRESHOLD}`);
-            showStatus(`unknown_user`, 'error');
+            showStatus(t('unknown_user'), 'error');
             return;
         }
         
-        // 第二关：绝对距离阈值
-        if (best.distance >= RECOGNITION_CONFIG.ABSOLUTE_THRESHOLD) {
-            console.log(`❌ 拒绝: 距离=${best.distance.toFixed(3)} >= ${RECOGNITION_CONFIG.ABSOLUTE_THRESHOLD}`);
-            showStatus(`unknown_user`, 'error');
+        // 距离阈值检查
+        if (best.distance >= threshold) {
+            showStatus(t('unknown_user'), 'error');
             return;
         }
         
-        // 第三关：Margin 检查（区分度）
-        if (second) {
-            const margin = second.distance - best.distance;
-            if (margin <= RECOGNITION_CONFIG.MIN_MARGIN) {
-                console.log(`⚠️ 拒绝: 区分度不足, margin=${margin.toFixed(3)} <= ${RECOGNITION_CONFIG.MIN_MARGIN}`);
-                showStatus(`identify_uncertain`, 'warning');
-                return;
-            }
+        // 区分度检查
+        if (second && (second.distance - best.distance) <= RECOGNITION_CONFIG.MIN_MARGIN) {
+            showStatus(t('identify_uncertain'), 'warning');
+            return;
         }
         
-        // 第四关：Ratio 检查
-        if (second && second.distance > 0) {
-            const ratio = best.distance / second.distance;
-            if (ratio >= RECOGNITION_CONFIG.MAX_RATIO) {
-                console.log(`⚠️ 拒绝: 比值过高, ratio=${ratio.toFixed(3)} >= ${RECOGNITION_CONFIG.MAX_RATIO}`);
-                showStatus(`identify_low_confidence`, 'warning');
-                return;
-            }
-        }
+        // ========== 识别成功 ==========
+        AppState.set('currentUser', best.user);
         
-        // ========== 所有检查通过，识别成功 ==========
-        console.log(`✅ 识别成功! 用户: ${best.user.username}`);
-        
-        const matchedUser = best.user;
-        AppState.set('currentUser', matchedUser);
-        
-        const userTypeLabel = t(matchedUser.user_type) || matchedUser.user_type;
-        
+        // 显示用户卡片
         const userCard = document.getElementById('userCard');
-        if (userCard) {
-            userCard.style.display = 'flex';
-        }
-        document.getElementById('userName').textContent = matchedUser.username;
-        document.getElementById('userType').textContent = userTypeLabel;
-        document.getElementById('userConges').textContent = matchedUser.conges_payes;
-        document.getElementById('userInitial').textContent = matchedUser.username.charAt(0).toUpperCase();
+        if (userCard) userCard.style.display = 'flex';
+        document.getElementById('userName').textContent = best.user.username;
+        document.getElementById('userType').textContent = t(best.user.user_type) || best.user.user_type;
+        document.getElementById('userConges').textContent = best.user.conges_payes;
+        document.getElementById('userInitial').textContent = best.user.username.charAt(0).toUpperCase();
         
-        // 计算置信度
-        let confidence = Math.max(0, (1 - best.distance / RECOGNITION_CONFIG.ABSOLUTE_THRESHOLD) * 100);
-        if (second) {
-            const marginBonus = Math.min(15, ((second.distance - best.distance) / RECOGNITION_CONFIG.MIN_MARGIN) * 10);
-            confidence = Math.min(100, confidence + marginBonus);
-        }
+        showStatus(t('identify_success'), 'success');
         
-        const confidenceEl = document.getElementById('confidenceScore');
-        if (confidenceEl) {
-            confidenceEl.textContent = `${confidence.toFixed(1)}%`;
-        }
+        // 识别成功后关闭摄像头
+        stopCamera();
         
-        console.log(`📊 置信度: ${confidence.toFixed(1)}%`);
-        console.log('========== ✅ 识别完成 ==========');
-        
-        showStatus(`identify_success`, 'success');
-        
+        // 启用打卡按钮
         document.querySelectorAll('.action-btn').forEach(btn => {
             btn.classList.remove('disabled');
         });
         
-        await loadTodayRecords(matchedUser.id);
-        stopCamera();
+        // 加载今日打卡记录
+        await loadTodayRecords(best.user.id);
+        
+        // ========== 启动30秒倒计时自动退出 ==========
         startAutoCloseTimer();
         
     } catch (error) {
-        console.error('❌ 识别异常:', error);
+        console.error('识别失败:', error);
         if (retryCount < RECOGNITION_CONFIG.MAX_RETRIES) {
-            console.log(`🔄 识别出错，重试 (${retryCount + 1}/${RECOGNITION_CONFIG.MAX_RETRIES})...`);
             await delay(500);
             return identify(retryCount + 1);
         }
-        showStatus('identify_error', 'error');
+        showStatus(t('identify_error'), 'error');
     }
-    
-    updateGlobalVars();
-}
-
-// ==================== 自动关闭定时器 ====================
-function startAutoCloseTimer() {
-    const currentTimer = AppState.get('autoCloseTimer');
-    if (currentTimer) {
-        clearTimeout(currentTimer);
-    }
-    
-    const hint = document.getElementById('autoCloseHint');
-    if (hint) hint.style.display = 'block';
-    
-    const timer = setTimeout(() => {
-        const userCard = document.getElementById('userCard');
-        const recordsList = document.getElementById('recordsList');
-        
-        if (userCard) userCard.style.display = 'none';
-        if (recordsList) recordsList.innerHTML = `<div class="empty">${t('no_records')}</div>`;
-        
-        document.querySelectorAll('.action-btn').forEach(btn => {
-            btn.classList.add('disabled');
-        });
-        
-        AppState.set('currentUser', null);
-        
-        const timeElements = ['checkInTime', 'checkOutTime', 'breakStartTime', 'breakEndTime'];
-        timeElements.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = '';
-        });
-        
-        if (hint) hint.style.display = 'none';
-        
-        showStatus('auto_close_info', 'info');
-        AppState.set('autoCloseTimer', null);
-        updateGlobalVars();
-    }, 5000);
-    
-    AppState.set('autoCloseTimer', timer);
-    updateGlobalVars();
 }
 
 // ==================== 员工管理 ====================
@@ -726,22 +673,11 @@ async function loadAllUsers() {
         
         const processedUsers = data.map(user => {
             let featuresArray = user.face_features_array || [];
-            
-            const normalizedArray = featuresArray.map(f => {
-                if (f && f._normalized) return f;
-                if (f && f.length) return { ...normalize(f), _normalized: true };
-                return null;
-            }).filter(f => f !== null);
-            
-            return {
-                ...user,
-                face_features: normalizedArray[0] || null,
-                face_features_array: normalizedArray
-            };
+            const validFeatures = featuresArray.filter(f => f && f.length > 0);
+            return { ...user, face_features_array: validFeatures };
         });
         
         AppState.set('allUsers', processedUsers);
-        updateGlobalVars();
         updateStats();
         
         if (document.getElementById('userList')) {
@@ -775,9 +711,7 @@ function updateStats() {
 function filterUsers() {
     const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
     const users = AppState.get('allUsers');
-    const filtered = users.filter(user => 
-        user.username.toLowerCase().includes(searchTerm)
-    );
+    const filtered = users.filter(user => user.username.toLowerCase().includes(searchTerm));
     displayUserList(filtered);
 }
 
@@ -815,122 +749,66 @@ function displayUserList(users) {
     });
 }
 
-// ==================== 活体检测 ====================
-async function performLivenessCheck() {
-    const video = document.getElementById('video');
-    
-    const openText = t('open_mouth');
-    showStatus(openText, 'info');
-    
-    let floatingHint = AppState.get('floatingHint');
-    if (!floatingHint) {
-        floatingHint = document.createElement('div');
-        floatingHint.id = 'floatingHint';
-        floatingHint.style.cssText = `
-            position: fixed;
-            bottom: 30%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.85);
-            color: #ffaa00;
-            padding: 16px 24px;
-            border-radius: 50px;
-            font-size: 20px;
-            font-weight: bold;
-            z-index: 10000;
-            white-space: nowrap;
-            backdrop-filter: blur(10px);
-            border: 2px solid #ffaa00;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        `;
-        document.body.appendChild(floatingHint);
-        AppState.set('floatingHint', floatingHint);
-    }
-    floatingHint.textContent = openText;
-    floatingHint.style.display = 'block';
-    
-    return new Promise((resolve) => {
-        let mouthOpened = false;
-        
-        const checkInterval = setInterval(async () => {
-            if (!video || video.paused || video.ended) return;
-            
-            try {
-                const detection = await faceapi
-                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-                    .withFaceLandmarks();
-                
-                if (!detection) return;
-                
-                const landmarks = detection.landmarks;
-                const positions = landmarks.positions;
-                
-                if (positions.length >= 68) {
-                    const leftCorner = positions[48];
-                    const rightCorner = positions[54];
-                    const upperLip = positions[51];
-                    const lowerLip = positions[57];
-                    
-                    const mouthWidth = Math.hypot(rightCorner.x - leftCorner.x, rightCorner.y - leftCorner.y);
-                    const mouthHeight = Math.hypot(lowerLip.y - upperLip.y, lowerLip.x - upperLip.x);
-                    const mouthOpenRatio = mouthHeight / mouthWidth;
-                    
-                    const isOpen = mouthOpenRatio > 0.8;
-                    const isClosed = mouthOpenRatio < 0.5;
-                    
-                    if (isOpen && !mouthOpened) {
-                        mouthOpened = true;
-                        const closeText = t('close_mouth');
-                        floatingHint.textContent = closeText;
-                        floatingHint.style.borderColor = '#00ff00';
-                        floatingHint.style.color = '#00ff00';
-                        showStatus(closeText, 'info');
-                        console.log('✅ 检测到张嘴');
-                    } else if (isClosed && mouthOpened) {
-                        clearInterval(checkInterval);
-                        clearTimeout(timeout);
-                        if (floatingHint) floatingHint.style.display = 'none';
-                        showStatus('liveness_success', 'success');
-                        resolve(true);
-                    }
-                }
-            } catch (e) {
-                console.error('张嘴检测错误:', e);
-            }
-        }, 100);
-        
-        const timeout = setTimeout(() => {
-            clearInterval(checkInterval);
-            if (floatingHint) floatingHint.style.display = 'none';
-            showStatus('liveness_timeout', 'error');
-            resolve(false);
-        }, 10000);
-    });
-}
-
-// ==================== 注册相关 ====================
 function selectUser(user) {
     AppState.set('selectedUserId', user.id);
-    
-    document.querySelectorAll('.user-item').forEach(item => {
-        item.classList.remove('selected');
-    });
-    if (event && event.currentTarget) {
-        event.currentTarget.classList.add('selected');
-    }
-    
+    document.querySelectorAll('.user-item').forEach(item => item.classList.remove('selected'));
+    if (event && event.currentTarget) event.currentTarget.classList.add('selected');
     const registerBtn = document.getElementById('registerBtn');
     if (registerBtn) registerBtn.disabled = false;
-    updateGlobalVars();
 }
 
 function resetRegistration() {
     AppState.set('selectedUserId', null);
-    document.querySelectorAll('.user-item').forEach(item => {
-        item.classList.remove('selected');
-    });
+    document.querySelectorAll('.user-item').forEach(item => item.classList.remove('selected'));
     const registerBtn = document.getElementById('registerBtn');
     if (registerBtn) registerBtn.disabled = true;
+}
+
+// ==================== 多姿势录入 ====================
+async function collectMultiPoseSamples() {
+    const samples = [];
+    const video = document.getElementById('video');
+    
+    for (let i = 0; i < REGISTER_POSES.length; i++) {
+        const pose = REGISTER_POSES[i];
+        const poseText = t(pose.text) || pose.text;
+        
+        // 显示姿势引导
+        showStatus(`${pose.emoji} ${poseText}`, 'info');
+        
+        // 更新姿势引导界面（如果存在）
+        if (window.updatePoseProgress) {
+            window.updatePoseProgress(i + 1, REGISTER_POSES.length);
+        }
+        if (window.showPoseMessage) {
+            window.showPoseMessage(poseText, pose.emoji);
+        }
+        
+        // 等待用户调整姿势
+        await delay(pose.delay);
+        
+        // 检测人脸并提取特征
+        const detection = await faceapi
+            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+        
+        if (detection) {
+            const normalizedFeatures = normalize(Array.from(detection.descriptor));
+            normalizedFeatures._normalized = true;
+            samples.push(normalizedFeatures);
+            console.log(`✅ 姿势 ${i + 1}/${REGISTER_POSES.length} 采集成功`);
+            showStatus(`✅ ${t('register_collected')} ${samples.length}/${REGISTER_POSES.length}`, 'success');
+        } else {
+            console.log(`❌ 姿势 ${i + 1} 采集失败，未检测到人脸`);
+            showStatus(`⚠️ ${t('register_no_face')} ${t('retry')} ${i + 1}`, 'warning');
+            i--; // 重试当前姿势
+        }
+        
+        await delay(300);
+    }
+    
+    return samples;
 }
 
 async function registerFace() {
@@ -944,47 +822,23 @@ async function registerFace() {
         await startCamera();
         await delay(500);
     }
-
-    const video = document.getElementById('video');
     
     try {
         showStatus('register_sampling', 'info');
         
-        const samples = [];
-        let successCount = 0;
-        
-        for (let i = 0; i < REGISTER_SAMPLE_COUNT; i++) {
-            showStatus(`${t('register_sampling_progress')} ${i + 1}/${REGISTER_SAMPLE_COUNT}...`, 'info');
-            
-            const detection = await faceapi
-                .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-                .withFaceLandmarks()
-                .withFaceDescriptor();
-
-            if (detection) {
-                const normalizedFeatures = normalize(Array.from(detection.descriptor));
-                normalizedFeatures._normalized = true;
-                samples.push(normalizedFeatures);
-                successCount++;
-                console.log(`采样 ${i + 1} 成功`);
-            } else {
-                console.log(`采样 ${i + 1} 失败，未检测到人脸`);
-            }
-            
-            if (i < REGISTER_SAMPLE_COUNT - 1) {
-                await delay(REGISTER_SAMPLE_INTERVAL);
-            }
-        }
+        // 使用多姿势采集
+        const samples = await collectMultiPoseSamples();
         
         if (samples.length === 0) {
             showStatus('register_no_face', 'error');
             return;
         }
         
-        if (samples.length < 3) {
+        if (samples.length < 4) {
             showStatus(`${t('register_few_faces')} ${samples.length} ${t('register_few_faces_unit')}`, 'warning');
         }
         
+        // 获取现有特征
         const { data: user, error: fetchError } = await supabase
             .from('users')
             .select('face_features_array')
@@ -996,7 +850,7 @@ async function registerFace() {
         let existingFeatures = user?.face_features_array || [];
         existingFeatures = existingFeatures.filter(f => f && f.length > 0);
         
-        const MAX_FEATURES = 15;
+        const MAX_FEATURES = 20;
         const newFeatures = [...existingFeatures, ...samples];
         
         if (newFeatures.length > MAX_FEATURES) {
@@ -1013,7 +867,8 @@ async function registerFace() {
             .eq('id', selectedId);
 
         if (error) throw error;
-
+        
+        clearUserCache();
         showStatus(`${t('register_success')} (${samples.length} ${t('register_faces')})`, 'success');
         await loadAllUsers();
         
@@ -1021,6 +876,11 @@ async function registerFace() {
         if (registerBtn) registerBtn.disabled = true;
         AppState.set('selectedUserId', null);
         stopCamera();
+        
+        // 隐藏姿势引导界面
+        if (window.hidePoseGuide) {
+            window.hidePoseGuide();
+        }
 
     } catch (error) {
         console.error('录入失败:', error);
@@ -1029,30 +889,49 @@ async function registerFace() {
 }
 
 // ==================== 考勤记录 ====================
+function checkLoginThenRecord(actionType) {
+    if (!AppState.get('currentUser')) {
+        showStatus('hint_select_employee_first', 'error');
+        return;
+    }
+    record(actionType);
+}
+
 async function record(actionType) {
     const currentUserData = AppState.get('currentUser');
     if (!currentUserData) {
-        showStatus('hint_select_employee_first', 'error');
+        showStatus(t('hint_select_employee_first'), 'error');
         return;
     }
 
     try {
+        // 使用本地时间（法国时间）
+        const now = new Date();
+        const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        
         const { error } = await supabase
             .from('attendance_records')
             .insert([{
                 user_id: currentUserData.id,
                 username: currentUserData.username,
                 user_type: currentUserData.user_type,
-                action_type: actionType
+                action_type: actionType,
+                record_date: today,
+                action_time: new Date().toISOString(),
+                is_valid: true,
+                status: 'normal'
             }]);
-
+        
         if (error) throw error;
-
+        
+        if (actionType === 'check_out') {
+            await calculateWorkHours(currentUserData.id, today);
+        }
+        
         const actionName = t(actionType) || actionType;
         showStatus(`${actionName}${t('record_success_suffix')}`, 'success');
         
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         
         const timeMap = {
             'check_in': 'checkInTime',
@@ -1065,18 +944,233 @@ async function record(actionType) {
         if (timeElement) timeElement.textContent = timeStr;
         
         await loadTodayRecords(currentUserData.id);
-        
-        startAutoCloseTimer();
+        resetAutoCloseTimer();
 
     } catch (error) {
         console.error('记录失败:', error);
-        showStatus('record_failed', 'error');
+        showStatus(t('record_failed'), 'error');
     }
 }
 
+// ==================== 计算工作时长 ====================
+async function calculateWorkHours(userId, date) {
+    // 获取当天所有打卡记录
+    const { data: records, error } = await supabase
+        .from('attendance_records')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('record_date', date)
+        .order('action_time', { ascending: true });
+    
+    if (error || !records || records.length === 0) return;
+    
+    const checkIn = records.find(r => r.action_type === 'check_in');
+    const checkOut = records.find(r => r.action_type === 'check_out');
+    const breakStart = records.find(r => r.action_type === 'break_start');
+    const breakEnd = records.find(r => r.action_type === 'break_end');
+    
+    // 情况1：有上班但没有下班记录
+    if (checkIn && !checkOut) {
+        await supabase
+            .from('attendance_records')
+            .update({ 
+                status: 'abnormal', 
+                need_review: true,
+                work_hours: 0
+            })
+            .eq('id', checkIn.id);
+        showStatus(`⚠️ 今日有上班打卡但无下班打卡，需管理员审核`, 'warning');
+        return;
+    }
+    
+    // 情况2：没有上班记录，不处理
+    if (!checkIn || !checkOut) return;
+    
+    // 计算总工作时间（分钟）
+    let totalMinutes = (new Date(checkOut.action_time) - new Date(checkIn.action_time)) / (1000 * 60);
+    
+    // 减去休息时间
+    if (breakStart && breakEnd) {
+        const breakMinutes = (new Date(breakEnd.action_time) - new Date(breakStart.action_time)) / (1000 * 60);
+        totalMinutes -= breakMinutes;
+    }
+    
+    const workHours = totalMinutes / 60;
+    const isAbnormal = workHours < 8;
+    
+    // 更新下班打卡记录
+    await supabase
+        .from('attendance_records')
+        .update({ 
+            work_hours: parseFloat(workHours.toFixed(2)), 
+            need_review: isAbnormal,
+            status: isAbnormal ? 'abnormal' : 'normal'
+        })
+        .eq('id', checkOut.id);
+    
+    // 如果有异常，显示提示
+    if (isAbnormal) {
+        showStatus(`⚠️ 今日工作时长 ${workHours.toFixed(2)} 小时，不足8小时，需管理员审核`, 'warning');
+    } else {
+        showStatus(`✅ 今日工作时长 ${workHours.toFixed(2)} 小时，正常出勤`, 'success');
+    }
+}
+
+// ==================== 启动30秒倒计时自动退出 ====================
+function startAutoCloseTimer() {
+    // 清除旧的定时器
+    if (AppState.get('autoCloseTimer')) {
+        clearTimeout(AppState.get('autoCloseTimer'));
+        AppState.set('autoCloseTimer', null);
+    }
+    
+    // 清除旧的倒计时
+    if (window.countdownInterval) {
+        clearInterval(window.countdownInterval);
+        window.countdownInterval = null;
+    }
+    
+    // 显示提示框
+    const hintBox = document.getElementById('autoCloseHint');
+    if (hintBox) hintBox.style.display = 'block';
+    
+    // 重置倒计时数字
+    let remainingSeconds = 30;
+    const countdownEl = document.getElementById('countdownSeconds');
+    if (countdownEl) countdownEl.textContent = remainingSeconds;
+    
+    // 启动倒计时更新
+    window.countdownInterval = setInterval(() => {
+        remainingSeconds--;
+        if (countdownEl && remainingSeconds >= 0) {
+            countdownEl.textContent = remainingSeconds;
+        }
+        if (remainingSeconds <= 0) {
+            clearInterval(window.countdownInterval);
+            window.countdownInterval = null;
+        }
+    }, 1000);
+    
+    // 启动30秒后执行清除
+    AppState.set('autoCloseTimer', setTimeout(() => {
+        // 清除倒计时
+        if (window.countdownInterval) {
+            clearInterval(window.countdownInterval);
+            window.countdownInterval = null;
+        }
+        
+        // 隐藏用户卡片
+        const userCard = document.getElementById('userCard');
+        if (userCard) userCard.style.display = 'none';
+        
+        // 清空记录列表
+        const recordsList = document.getElementById('recordsList');
+        if (recordsList) {
+            recordsList.innerHTML = `<div class="empty">${t('no_records')}</div>`;
+        }
+        
+        // 禁用所有打卡按钮
+        document.querySelectorAll('.action-btn').forEach(btn => {
+            btn.classList.add('disabled');
+        });
+        
+        // 清除当前用户
+        AppState.set('currentUser', null);
+        
+        // 隐藏倒计时提示框
+        if (hintBox) hintBox.style.display = 'none';
+        
+        // 清空时间显示
+        const timeElements = ['checkInTime', 'checkOutTime', 'breakStartTime', 'breakEndTime'];
+        timeElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '';
+        });
+        
+        // 显示自动关闭提示
+        showStatus(t('auto_close_info'), 'info');
+        AppState.set('autoCloseTimer', null);
+    }, 30000));
+}
+// ==================== 重置30秒倒计时 ====================
+function resetAutoCloseTimer() {
+    // 清除旧的定时器
+    if (AppState.get('autoCloseTimer')) {
+        clearTimeout(AppState.get('autoCloseTimer'));
+    }
+    
+    // 清除旧的倒计时
+    if (window.countdownInterval) {
+        clearInterval(window.countdownInterval);
+    }
+    
+    // 显示提示框（如果已隐藏则重新显示）
+    const hintBox = document.getElementById('autoCloseHint');
+    if (hintBox) hintBox.style.display = 'block';
+    
+    // 重置倒计时数字
+    let remainingSeconds = 30;
+    const countdownEl = document.getElementById('countdownSeconds');
+    if (countdownEl) countdownEl.textContent = remainingSeconds;
+    
+    // 启动新的倒计时更新
+    window.countdownInterval = setInterval(() => {
+        remainingSeconds--;
+        if (countdownEl && remainingSeconds >= 0) {
+            countdownEl.textContent = remainingSeconds;
+        }
+        if (remainingSeconds <= 0) {
+            clearInterval(window.countdownInterval);
+            window.countdownInterval = null;
+        }
+    }, 1000);
+    
+    // 启动30秒后执行清除
+    AppState.set('autoCloseTimer', setTimeout(() => {
+        // 清除倒计时
+        if (window.countdownInterval) {
+            clearInterval(window.countdownInterval);
+            window.countdownInterval = null;
+        }
+        
+        // 隐藏用户卡片
+        const userCard = document.getElementById('userCard');
+        if (userCard) userCard.style.display = 'none';
+        
+        // 清空记录列表
+        const recordsList = document.getElementById('recordsList');
+        if (recordsList) {
+            recordsList.innerHTML = `<div class="empty">${t('no_records')}</div>`;
+        }
+        
+        // 禁用所有打卡按钮
+        document.querySelectorAll('.action-btn').forEach(btn => {
+            btn.classList.add('disabled');
+        });
+        
+        // 清除当前用户
+        AppState.set('currentUser', null);
+        
+        // 隐藏倒计时提示框
+        if (hintBox) hintBox.style.display = 'none';
+        
+        // 清空时间显示
+        const timeElements = ['checkInTime', 'checkOutTime', 'breakStartTime', 'breakEndTime'];
+        timeElements.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '';
+        });
+        
+        // 显示自动关闭提示
+        showStatus(t('auto_close_info'), 'info');
+        AppState.set('autoCloseTimer', null);
+    }, 30000));
+}
 async function loadTodayRecords(userId) {
     try {
-        const today = new Date().toISOString().split('T')[0];
+        // 使用法国本地时间
+        const now = new Date();
+        const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
         
         const { data, error } = await supabase
             .from('attendance_records')
@@ -1097,87 +1191,74 @@ async function loadTodayRecords(userId) {
             return;
         }
 
-        let html = '';
-        
         const todayCount = document.getElementById('todayCount');
         if (todayCount) todayCount.textContent = data.length;
         
-        data.forEach(record => {
-            const time = new Date(record.action_time).toLocaleTimeString('zh-CN', {
-                hour: '2-digit',
-                minute: '2-digit'
+        recordsDiv.innerHTML = data.map(record => {
+            const time = new Date(record.action_time).toLocaleTimeString('fr-FR', {
+                hour: '2-digit', minute: '2-digit'
             });
             const actionName = t(record.action_type) || record.action_type;
-            
-            html += `
+            return `
                 <div class="record-item">
                     <span class="record-time">${time}</span>
                     <span class="record-type">${actionName}</span>
                 </div>
             `;
-        });
-        
-        recordsDiv.innerHTML = html;
+        }).join('');
 
     } catch (error) {
         console.error('加载记录失败:', error);
     }
 }
 
-// 修改后的 showStatus 函数 - 支持三语
+function closeLoginModal() {
+    const modal = document.getElementById('loginModal');
+    if (modal) modal.style.display = 'none';
+}
+
+// ==================== 状态提示（三语支持）====================
 function showStatus(messageKey, type, duration = null) {
     const statusDiv = document.getElementById('status');
     if (!statusDiv) return;
     
-    // 清除之前的定时器
-    if (window.statusTimeout) {
-        clearTimeout(window.statusTimeout);
-    }
+    if (window.statusTimeout) clearTimeout(window.statusTimeout);
     
-    // 获取翻译后的消息
     let message = messageKey;
-    if (typeof messageKey === 'string' && messageKey.includes(' ')) {
-        // 如果已经是完整消息，直接使用（兼容旧代码）
-        message = messageKey;
-    } else {
-        // 尝试翻译
+    if (typeof messageKey === 'string' && !messageKey.includes(' ') && !messageKey.includes('✅') && !messageKey.includes('⚠️')) {
         const translated = t(messageKey);
-        if (translated !== messageKey) {
-            message = translated;
-        }
+        if (translated !== messageKey) message = translated;
     }
     
     statusDiv.style.display = 'block';
     statusDiv.className = `status ${type}`;
     statusDiv.textContent = message;
     
-    // 根据消息类型设置不同的显示时间
     let displayDuration = duration;
     if (displayDuration === null) {
-        if (type === 'error') {
-            displayDuration = 5000;
-        } else if (type === 'warning') {
-            displayDuration = 4000;
-        } else if (type === 'success') {
-            displayDuration = 4000;
-        } else {
-            displayDuration = 4000;
-        }
+        if (type === 'error') displayDuration = 5000;
+        else if (type === 'warning') displayDuration = 4000;
+        else displayDuration = 4000;
     }
     
     window.statusTimeout = setTimeout(() => {
-        if (statusDiv && statusDiv.style) {
-            statusDiv.style.display = 'none';
-        }
+        if (statusDiv && statusDiv.style) statusDiv.style.display = 'none';
         window.statusTimeout = null;
     }, displayDuration);
 }
 
-if (typeof window.showConfirm === 'undefined') {
-    window.showConfirm = function(title, message) {
-        return new Promise((resolve) => {
-            const result = confirm(message);
-            resolve(result);
-        });
-    };
-}
+// 导出全局函数
+// 导出全局函数
+window.identify = identify;
+window.registerFace = registerFace;
+window.selectUser = selectUser;
+window.resetRegistration = resetRegistration;
+window.filterUsers = filterUsers;
+window.record = record;
+window.checkLoginThenRecord = checkLoginThenRecord;
+window.closeLoginModal = closeLoginModal;
+window.startCamera = startCamera;
+window.stopCamera = stopCamera;
+window.loadAllUsers = loadAllUsers;
+window.startAutoCloseTimer = startAutoCloseTimer;
+window.resetAutoCloseTimer = resetAutoCloseTimer;

@@ -843,3 +843,113 @@ body {
         grid-template-columns: repeat(4, 1fr);
     }
 }
+/* ==================== 姿势引导样式（多姿势录入专用） ==================== */
+.pose-guide {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 24px;
+    padding: 20px;
+    margin: 16px 0;
+    text-align: center;
+    color: white;
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+    animation: gentlePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes gentlePulse {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+    }
+    50% {
+        transform: scale(1.01);
+        box-shadow: 0 12px 28px rgba(102, 126, 234, 0.5);
+    }
+}
+
+.pose-progress {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 30px;
+    height: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.pose-progress-bar {
+    background: white;
+    height: 100%;
+    width: 0%;
+    border-radius: 30px;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.pose-icon {
+    font-size: 48px;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.pose-text {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.pose-hint {
+    font-size: 13px;
+    opacity: 0.85;
+    margin-top: 8px;
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .pose-guide {
+        padding: 16px;
+    }
+    
+    .pose-icon {
+        font-size: 36px;
+    }
+    
+    .pose-text {
+        font-size: 16px;
+    }
+    
+    .pose-hint {
+        font-size: 11px;
+    }
+}
+
+/* 特征数量显示 */
+.face-count {
+    font-size: 11px;
+    color: #667eea;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.face-count::before {
+    content: '📸';
+    font-size: 10px;
+}
+
+/* 选中员工的特殊样式 */
+.user-item.selected {
+    background: linear-gradient(135deg, #ebf4ff 0%, #e0e8ff 100%);
+    border-left: 4px solid #667eea;
+    padding-left: 10px;
+}
+
+/* 已注册员工的徽章 */
+.status-registered {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.status-unregistered {
+    background: #feebc8;
+    color: #744210;
+}

@@ -39,6 +39,16 @@ const translations = {
         previous: 'Précédent',
         retrying: 'Nouvelle tentative...',
         confidence: 'Confiance',
+        nod_instruction: '🙂 Veuillez hocher la tête',
+nod_success: 'Hochement',
+nod_again: '🙂 Veuillez à nouveau hocher la tête',
+pose_face_front: 'Regardez droit devant vous',
+pose_look_up: 'Levez légèrement la tête',
+pose_look_down: 'Baissez légèrement la tête',
+pose_look_left: 'Tournez la tête à gauche',
+pose_look_right: 'Tournez la tête à droite',
+pose_smile: 'Souriez',
+retry: 'Reprenez la pose',
         
         // 考勤动作类型
         check_in: 'Arrivée',
@@ -86,7 +96,8 @@ const translations = {
         record_success: 'Pointage enregistré',
         record_success_suffix: ' réussi',
         record_failed: 'Échec de l\'enregistrement',
-        auto_close: 'Fermeture automatique dans 5s',
+          auto_close: 'Fermeture dans',
+        auto_close_unit: 'secondes',
         auto_close_info: 'Informations automatiquement fermées',
         
         // 活体检测
@@ -167,7 +178,7 @@ const translations = {
         error_timeout: 'Délai d\'attente dépassé',
         no_registered_users: 'Aucun employé enregistré',
         no_valid_user_data: 'Impossible de correspondre : aucune donnée valide',
-        
+        liveness_success: '✅ Détection de vivacité réussie',
         // 单位
         times: 'fois'
     },
@@ -175,6 +186,16 @@ const translations = {
     // ==================== 中文 (ZH) ====================
     zh: {
         // 通用
+                nod_instruction: '🙂 请轻轻点头一下',
+        nod_success: '点头',
+        nod_again: '🙂 请再次轻轻点头',
+        pose_face_front: '请正对摄像头',
+        pose_look_up: '请稍微抬头',
+        pose_look_down: '请稍微低头',
+        pose_look_left: '请稍微向左看',
+        pose_look_right: '请稍微向右看',
+        pose_smile: '请微笑一下',
+        retry: '重试',
         unknown_user: '❌ 陌生人！未识别到匹配的员工，请联系管理员录入人脸',
         no_face_detected: '未检测到人脸，请确保面部正对摄像头',
         app_name: '人脸识别考勤系统',
@@ -244,7 +265,8 @@ const translations = {
         record_success: '打卡成功',
         record_success_suffix: '成功',
         record_failed: '打卡失败',
-        auto_close: '信息将在5秒后自动关闭',
+        auto_close: '信息将在',
+        auto_close_unit: '秒后自动关闭',
         auto_close_info: '信息已自动关闭',
         
         // 活体检测
@@ -309,7 +331,7 @@ const translations = {
         this_week: '本周',
         this_month: '本月',
         custom_range: '自定义时间',
-        
+        liveness_success: '✅ 活体检测通过',
         // 错误信息
         error_faceapi: 'FaceAPI加载失败',
         error_camera: '无法访问摄像头',
@@ -330,6 +352,17 @@ const translations = {
     
     // ==================== 英语 (EN) ====================
     en: {
+        liveness_success: '✅ Liveness detection passed',
+        nod_instruction: '🙂 Please nod your head gently',
+        nod_success: 'Nod',
+        nod_again: '🙂 Please nod your head again',
+        pose_face_front: 'Face the camera',
+        pose_look_up: 'Look up slightly',
+        pose_look_down: 'Look down slightly',
+        pose_look_left: 'Look left slightly',
+        pose_look_right: 'Look right slightly',
+        pose_smile: 'Smile',
+        retry: 'Retry',
         // 通用
         unknown_user: '❌ Unknown! No matching employee found, please contact administrator',
         no_face_detected: 'No face detected, please make sure you are facing the camera',
@@ -400,7 +433,9 @@ const translations = {
         record_success: 'Record saved',
         record_success_suffix: ' successful',
         record_failed: 'Failed to save record',
-        auto_close: 'Auto close in 5s',
+    
+        auto_close: 'Auto close in',
+auto_close_unit: 'seconds',
         auto_close_info: 'Information auto-closed',
         
         // 活体检测

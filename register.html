@@ -13,7 +13,7 @@
         <div class="top-bar-left">
             <div class="logo" data-i18n="app_name">FaceAttendance</div>
             <div class="top-nav">
-                <a href="index.html" data-i18n="nav_attendance" onclick="clearSessionBeforeLeave()">Pointage</a>
+                <a href="index.html" data-i18n="nav_attendance">Pointage</a>
                 <a href="register.html" class="active" data-i18n="nav_register">Enregistrement</a>
             </div>
         </div>
@@ -96,6 +96,16 @@
             <canvas id="overlay" class="overlay"></canvas>
         </div>
 
+        <!-- ==================== 姿势引导区域（多姿势录入专用） ==================== -->
+        <div id="poseGuide" class="pose-guide" style="display: none;">
+            <div class="pose-progress">
+                <div class="pose-progress-bar" id="poseProgressBar"></div>
+            </div>
+            <div class="pose-icon" id="poseIcon">😀</div>
+            <div class="pose-text" id="poseText">请正对摄像头</div>
+            <div class-pose-hint" id="poseHint">保持姿势不动，自动采集</div>
+        </div>
+
         <!-- 操作按钮组 -->
         <div class="action-group">
             <button id="registerBtn" class="btn-save" onclick="registerFace()" disabled>
@@ -121,9 +131,9 @@
     <script src="languages.js"></script>
     <script src="app.js"></script>
     <script>
-        // 页面加载时检查session - 但只用于当前页面
+        // ==================== 页面初始化 ====================
         document.addEventListener('DOMContentLoaded', function() {
-            // 从sessionStorage检查（不用localStorage）
+            // 从sessionStorage检查登录状态
             const session = loadSessionFromSessionOnly();
             if (session) {
                 // 已登录，隐藏登录框，显示用户信息
@@ -154,15 +164,6 @@
         function loadSessionFromSessionOnly() {
             const data = sessionStorage.getItem('session');
             return data ? JSON.parse(data) : null;
-        }
-
-        // 离开页面时清除session
-        function clearSessionBeforeLeave() {
-            sessionStorage.removeItem('session');
-            setTimeout(() => {
-                window.location.href = 'index.html';
-            }, 50);
-            return false;
         }
 
         // 处理登录 - 只使用sessionStorage
@@ -230,7 +231,13 @@
             window.location.reload();
         }
 
-        // 重写导航链接点击事件
+        // 离开页面前清除session（跳转到其他页面时）
+        function clearSessionBeforeLeave() {
+            sessionStorage.removeItem('session');
+            return true;
+        }
+
+        // 导航链接点击事件
         document.querySelectorAll('.top-nav a').forEach(link => {
             link.addEventListener('click', function(e) {
                 if (this.getAttribute('href') !== 'register.html') {
@@ -239,6 +246,7 @@
             });
         });
 
+        // 页面关闭时清除session
         window.addEventListener('pagehide', function() {
             sessionStorage.removeItem('session');
         });
@@ -246,6 +254,59 @@
         window.addEventListener('beforeunload', function() {
             sessionStorage.removeItem('session');
         });
+
+        // ==================== 姿势引导辅助函数（供app.js调用） ====================
+        
+        // 显示姿势引导界面
+        window.showPoseGuide = function(poseIndex, totalPoses, poseText, poseEmoji) {
+            const guideDiv = document.getElementById('poseGuide');
+            const progressBar = document.getElementById('poseProgressBar');
+            const poseIcon = document.getElementById('poseIcon');
+            const poseTextEl = document.getElementById('poseText');
+            
+            if (guideDiv) {
+                guideDiv.style.display = 'block';
+            }
+            if (progressBar) {
+                const percent = (poseIndex / totalPoses) * 100;
+                progressBar.style.width = percent + '%';
+            }
+            if (poseIcon) {
+                poseIcon.textContent = poseEmoji || '😀';
+            }
+            if (poseTextEl) {
+                poseTextEl.textContent = poseText;
+            }
+        };
+        
+        // 隐藏姿势引导界面
+        window.hidePoseGuide = function() {
+            const guideDiv = document.getElementById('poseGuide');
+            if (guideDiv) {
+                guideDiv.style.display = 'none';
+            }
+        };
+        
+        // 更新姿势进度
+        window.updatePoseProgress = function(current, total) {
+            const progressBar = document.getElementById('poseProgressBar');
+            if (progressBar) {
+                const percent = (current / total) * 100;
+                progressBar.style.width = percent + '%';
+            }
+        };
+        
+        // 显示单个姿势提示（不改变进度条）
+        window.showPoseMessage = function(message, emoji) {
+            const poseTextEl = document.getElementById('poseText');
+            const poseIcon = document.getElementById('poseIcon');
+            if (poseTextEl) {
+                poseTextEl.textContent = message;
+            }
+            if (poseIcon && emoji) {
+                poseIcon.textContent = emoji;
+            }
+        };
     </script>
 </body>
 </html>
