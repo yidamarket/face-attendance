@@ -420,9 +420,13 @@
                 privacy_text1: 'ℹ️ Les données faciales sont utilisées uniquement pour le pointage. Non partagées avec des tiers. Vous pouvez demander la suppression à tout moment.',
                 privacy_tech: '📐 Technique : Stockage de vecteurs de caractéristiques 512D (données mathématiques), non des photos. Impossible de reconstruire le visage. Chiffrement intégral.',
                 privacy_text2: '✅ Engagement : Données supprimées après départ. Contactez l\'administrateur pour toute question.',
-                privacy_footer: 'Conforme au RGPD · Données chiffrées'
+                privacy_footer: 'Conforme au RGPD · Données chiffrées',
+                work_hours_normal: '✅ Fin de journée enregistrée, durée effective de travail aujourd\'hui : {hours} heures',
+        work_hours_need_review: '⚠️ Fin de journée enregistrée, mais la durée de travail effective n\'est que de {hours} heures. Une vérification sera effectuée.'
             },
             zh: {
+                 work_hours_normal: '✅ 下班打卡成功，今日有效工作时长 {hours} 小时',
+        work_hours_need_review: '⚠️ 下班打卡成功，但有效工作时长仅为 {hours} 小时，将提交审核',
                 app_name: '智能考勤系统', nav_attendance: '考勤', nav_register: '录入',
                 main_title: '🔐 认证中心', sub_title: '选择验证方式',
                 face_title: '人脸识别', face_desc: '刷脸快速打卡',
@@ -445,6 +449,8 @@
                 privacy_footer: '符合个人信息保护法 · 数据加密存储'
             },
             en: {
+               work_hours_normal: '✅ Check-out successful. Today\'s effective work hours: {hours} hours',
+        work_hours_need_review: '⚠️ Check-out successful, but effective work hours are only {hours} hours. Will be reviewed.',
                 app_name: 'Smart Attendance System', nav_attendance: 'Attendance', nav_register: 'Register',
                 main_title: '🔐 Auth Center', sub_title: 'Choose your method',
                 face_title: 'Face Recognition', face_desc: 'Quick face check',
@@ -472,7 +478,15 @@
         let currentUser = null;
         let timer = null, countInt = null;
         
-        function t(key) { return dict[lang][key] || dict.fr[key] || key; }
+        function t(key, params) {
+            let text = dict[lang][key] || dict.fr[key] || key;
+            if (params) {
+                Object.keys(params).forEach(function(k) {
+                    text = text.replace('{' + k + '}', params[k]);
+                });
+            }
+            return text;
+        }
         
         function updateUI() {
             document.getElementById('appNameLogo').innerHTML = t('app_name');
@@ -548,22 +562,118 @@
             }
             container.innerHTML = html;
         }
-        
-        async function doRecord(type) {
-            if (!currentUser) { showMsg(t('please_login'), true); return; }
-            try {
-                await supabase.from('attendance_records').insert([{
-                    user_id: currentUser.id, username: currentUser.username, user_type: currentUser.user_type,
-                    action_type: type, record_date: new Date().toISOString().split('T')[0],
-                    action_time: new Date().toISOString(), is_valid: true, status: 'normal'
-                }]);
-                showMsg(`${t(type)} ${t('record_ok')}`);
-                await loadRecords(currentUser.id);
-                resetTimer();
-            } catch(e) { showMsg(t('record_fail'), true); }
+       async function doRecord(type) {
+    if (!currentUser) { showMsg(t('please_login'), true); return; }
+    
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    
+    try {
+        // ========== 下班打卡：需要计算工作时长 ==========
+        if (type === 'check_out') {
+            // 1. 获取今天的上班打卡时间
+            const { data: checkIn } = await supabase
+                .from('attendance_records')
+                .select('action_time')
+                .eq('user_id', currentUser.id)
+                .eq('record_date', today)
+                .eq('action_type', 'check_in')
+                .order('action_time', { ascending: true })
+                .limit(1);
+            
+            // 2. 获取今天的休息记录
+            const { data: breaks } = await supabase
+                .from('attendance_records')
+                .select('action_type, action_time')
+                .eq('user_id', currentUser.id)
+                .eq('record_date', today)
+                .in('action_type', ['break_start', 'break_end']);
+            
+            // 计算休息总分钟数
+            let breakMinutes = 0;
+            let lastStart = null;
+            for (const record of breaks || []) {
+                if (record.action_type === 'break_start') {
+                    lastStart = new Date(record.action_time);
+                } else if (record.action_type === 'break_end' && lastStart) {
+                    breakMinutes += (new Date(record.action_time) - lastStart) / (1000 * 60);
+                    lastStart = null;
+                }
+            }
+            
+            let workHours = null;
+            let needReview = false;
+            let status = 'normal';
+            
+            if (checkIn && checkIn.length > 0) {
+                const checkInTime = new Date(checkIn[0].action_time);
+                let diffMs = now - checkInTime;
+                // 扣除休息时间
+                diffMs -= breakMinutes * 60 * 1000;
+                workHours = diffMs / (1000 * 60 * 60);
+                workHours = Math.round(workHours * 10) / 10;
+                
+                // 工作时长不足8小时 → 标记异常
+                if (workHours < 8) {
+                    needReview = true;
+                    status = 'abnormal';
+                }
+            } else {
+                // 没有上班打卡记录 → 异常
+                needReview = true;
+                status = 'abnormal';
+                workHours = 0;
+            }
+            
+            // 插入下班打卡记录
+            await supabase.from('attendance_records').insert([{
+                user_id: currentUser.id,
+                username: currentUser.username,
+                user_type: currentUser.user_type,
+                action_type: type,
+                record_date: today,
+                action_time: now.toISOString(),
+                is_valid: true,
+                status: status,
+                need_review: needReview,
+                work_hours: workHours
+            }]);
+            
+            // 显示提示（三语）
+            if (needReview) {
+                showMsg(t('work_hours_need_review', { hours: workHours }), false);
+            } else {
+                showMsg(t('work_hours_normal', { hours: workHours }), false);
+            }
+            
+        } else {
+            // ========== 上班打卡 / 休息开始 / 休息结束：直接记录 ==========
+            await supabase.from('attendance_records').insert([{
+                user_id: currentUser.id,
+                username: currentUser.username,
+                user_type: currentUser.user_type,
+                action_type: type,
+                record_date: today,
+                action_time: now.toISOString(),
+                is_valid: true,
+                status: 'normal',
+                need_review: false,
+                work_hours: null
+            }]);
+            showMsg(`${t(type)} ${t('record_ok')}`);
         }
         
-        async function doLogin() {
+        // 刷新记录列表
+        await loadRecords(currentUser.id);
+        resetTimer();
+        
+    } catch(e) { 
+        console.error('打卡失败:', e);
+        showMsg(t('record_fail'), true); 
+    }
+}
+
+async function doLogin() {
             const user = document.getElementById('pwdUsername').value.trim();
             const pwd = document.getElementById('pwdPassword').value.trim();
             const errDiv = document.getElementById('errorMsg');
