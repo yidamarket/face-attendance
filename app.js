@@ -190,6 +190,33 @@ window.addEventListener('load', async function() {
 });
 
 // ==================== 模型加载 ====================
+/* async function loadModels(retryCount = 0) {
+    try {
+        showStatus('loading', 'info');
+        console.log('开始加载模型...');
+        
+        await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@latest/model/'),
+            faceapi.nets.faceLandmark68Net.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@latest/model/'),
+            faceapi.nets.faceRecognitionNet.loadFromUri('https://cdn.jsdelivr.net/npm/@vladmandic/face-api@latest/model/')
+        ]);
+        
+        AppState.set('modelsLoaded', true);
+        console.log('✅ 模型加载成功');
+        showStatus('success', 'success');
+        return true;
+    } catch (error) {
+        console.error('模型加载失败:', error);
+        if (retryCount < MODEL_LOAD_RETRIES) {
+            console.log(`重试加载模型 (${retryCount + 1}/${MODEL_LOAD_RETRIES})...`);
+            showStatus('retrying', 'warning');
+            await delay(1000);
+            return loadModels(retryCount + 1);
+        }
+        showStatus('error_model', 'error');
+        return false;
+    }
+} */
 async function loadModels(retryCount = 0) {
     try {
         showStatus('loading', 'info');
@@ -217,7 +244,6 @@ async function loadModels(retryCount = 0) {
         return false;
     }
 }
-
 // ==================== 摄像头控制 ====================
 async function startCamera() {
     console.log('startCamera 被调用');
@@ -537,11 +563,11 @@ async function identify(retryCount = 0) {
     }
     
     // 点头活体检测
-    const livenessPassed = await performLivenessCheck();
+   /*  const livenessPassed = await performLivenessCheck();
     if (!livenessPassed) {
         stopCamera();
         return;
-    }
+    } */
     
     const video = document.getElementById('video');
     showStatus(t('detecting'), 'info');
