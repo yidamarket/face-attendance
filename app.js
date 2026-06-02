@@ -549,6 +549,7 @@ async function performLivenessCheck() {
     });
 }
 // ==================== 人脸识别函数 ====================
+// ==================== 人脸识别函数 ====================
 async function identify(retryCount = 0) {
     console.log('========== 🔍 开始人脸识别 ==========');
     
@@ -561,13 +562,6 @@ async function identify(retryCount = 0) {
         await startCamera();
         await delay(500);
     }
-    
-    // 点头活体检测
-   /*  const livenessPassed = await performLivenessCheck();
-    if (!livenessPassed) {
-        stopCamera();
-        return;
-    } */
     
     const video = document.getElementById('video');
     showStatus(t('detecting'), 'info');
@@ -623,28 +617,40 @@ async function identify(retryCount = 0) {
         const second = distances[1] || null;
         
         console.log(`🥇 最佳匹配: ${best.user.username}, 距离=${best.distance.toFixed(4)}`);
+        if (second) {
+            console.log(`🥈 第二匹配: ${second.user.username}, 距离=${second.distance.toFixed(4)}, 差值=${(second.distance - best.distance).toFixed(4)}`);
+        }
         
-        // 胡子员工特殊处理（可根据用户类型或名字判断）
+        // 胡子员工特殊处理
         const isBeardUser = best.user.user_type === 'chauffeur' || 
                             best.user.username.includes('胡') ||
                             best.user.username.includes('Beard');
-        const threshold = isBeardUser ? RECOGNITION_CONFIG.BEARD_THRESHOLD : RECOGNITION_CONFIG.ABSOLUTE_THRESHOLD;
         
-        // 绝对拒绝检查
-        if (best.distance > RECOGNITION_CONFIG.ABSOLUTE_REJECT_THRESHOLD) {
+        // 阈值配置
+        const ABSOLUTE_THRESHOLD = 0.55;
+        const BEARD_THRESHOLD = 0.60;
+        const MIN_MARGIN = 0.10;
+        
+        const threshold = isBeardUser ? BEARD_THRESHOLD : ABSOLUTE_THRESHOLD;
+        
+        // 1. 绝对距离检查
+        if (best.distance > threshold) {
+            console.log(`❌ 距离过大: ${best.distance.toFixed(4)} > ${threshold}`);
             showStatus(t('unknown_user'), 'error');
             return;
         }
         
-        // 距离阈值检查
-        if (best.distance >= threshold) {
-            showStatus(t('unknown_user'), 'error');
+        // 2. 区分度检查
+        if (second && (second.distance - best.distance) < MIN_MARGIN) {
+            console.log(`❌ 区分度不足: 差值=${(second.distance - best.distance).toFixed(4)} < ${MIN_MARGIN}`);
+            showStatus(t('identify_uncertain_detail'), 'warning');
             return;
         }
         
-        // 区分度检查
-        if (second && (second.distance - best.distance) <= RECOGNITION_CONFIG.MIN_MARGIN) {
-            showStatus(t('identify_uncertain'), 'warning');
+        // 3. 绝对拒绝检查
+        if (best.distance > 0.65) {
+            console.log(`❌ 绝对拒绝: ${best.distance.toFixed(4)} > 0.65`);
+            showStatus(t('unknown_user'), 'error');
             return;
         }
         
@@ -672,12 +678,13 @@ async function identify(retryCount = 0) {
         // 加载今日打卡记录
         await loadTodayRecords(best.user.id);
         
-        // ========== 启动30秒倒计时自动退出 ==========
+        // 启动30秒倒计时自动退出
         startAutoCloseTimer();
         
     } catch (error) {
         console.error('识别失败:', error);
         if (retryCount < RECOGNITION_CONFIG.MAX_RETRIES) {
+            showStatus(t('detect_failed_retry'), 'warning');
             await delay(500);
             return identify(retryCount + 1);
         }
@@ -935,6 +942,74 @@ async function record(actionType) {
         const now = new Date();
         const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
         
+        // 获取今天所有打卡记录
+        const { data: todayRecords, error: fetchError } = await supabase
+            .from('attendance_records')
+            .select('action_type, action_time')
+            .eq('user_id', currentUserData.id)
+            .eq('record_date', today)
+            .order('action_time', { ascending: true });
+        
+        if (fetchError) throw fetchError;
+        
+        // 获取已存在的同类型打卡
+        const existingRecord = todayRecords?.find(r => r.action_type === actionType);
+        if (existingRecord) {
+            const actionName = t(actionType) || actionType;
+            showStatus(`${actionName}${t('already_recorded')}`, 'warning');
+            return;
+        }
+        
+        // ========== 顺序控制 ==========
+        const hasCheckIn = todayRecords?.some(r => r.action_type === 'check_in');
+        const hasBreakStart = todayRecords?.some(r => r.action_type === 'break_start');
+        const hasBreakEnd = todayRecords?.some(r => r.action_type === 'break_end');
+        const hasCheckOut = todayRecords?.some(r => r.action_type === 'check_out');
+        
+        // 规则1: 必须先进先打卡（check_in）
+        if (actionType !== 'check_in' && !hasCheckIn) {
+            showStatus(t('must_check_in_first'), 'error');
+            return;
+        }
+        
+        // 规则2: 下班打卡后不能再打卡
+        if (hasCheckOut && actionType !== 'check_in') {
+            showStatus(t('already_checked_out'), 'error');
+            return;
+        }
+        
+        // 规则3: 休息开始必须在上班打卡之后
+        if (actionType === 'break_start' && !hasCheckIn) {
+            showStatus(t('must_check_in_first'), 'error');
+            return;
+        }
+        
+        // 规则4: 休息结束必须在休息开始之后
+        if (actionType === 'break_end' && !hasBreakStart) {
+            showStatus(t('must_break_start_first'), 'error');
+            return;
+        }
+        
+        // 规则5: 休息结束后不能再开始休息（除非有新的休息？通常一天只能休息一次）
+        if (actionType === 'break_start' && hasBreakEnd) {
+            showStatus(t('break_already_ended'), 'error');
+            return;
+        }
+        
+        // 规则6: 下班打卡必须在上班打卡之后
+        if (actionType === 'check_out' && !hasCheckIn) {
+            showStatus(t('must_check_in_first'), 'error');
+            return;
+        }
+        
+        // 规则7: 休息未结束不能下班
+        if (actionType === 'check_out' && hasBreakStart && !hasBreakEnd) {
+            showStatus(t('must_end_break_first'), 'error');
+            return;
+        }
+        // ========== 顺序控制结束 ==========
+        
+        // 插入打卡记录
         const { error } = await supabase
             .from('attendance_records')
             .insert([{
@@ -950,6 +1025,7 @@ async function record(actionType) {
         
         if (error) throw error;
         
+        // 下班打卡时计算工时
         if (actionType === 'check_out') {
             await calculateWorkHours(currentUserData.id, today);
         }
@@ -977,7 +1053,6 @@ async function record(actionType) {
         showStatus(t('record_failed'), 'error');
     }
 }
-
 // ==================== 计算工作时长 ====================
 async function calculateWorkHours(userId, date) {
     // 获取当天所有打卡记录

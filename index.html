@@ -397,336 +397,407 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="config.js"></script>
-    <script>
-        // ==================== 三语字典（包含隐私说明） ====================
-        const dict = {
-            fr: {
-                app_name: 'Système de Pointage Intelligent', nav_attendance: 'Pointage', nav_register: 'Enregistrement',
-                main_title: '🔐 Centre d\'authentification', sub_title: 'Choisissez votre méthode',
-                face_title: 'Reconnaissance faciale', face_desc: 'Vérification par visage',
-                pwd_title: 'Connexion mot de passe', pwd_desc: 'Nom + mot de passe',
-                username_label: 'Nom d\'utilisateur', password_label: 'Mot de passe', login_btn: 'Se connecter',
-                back_choice: '← Retour', login_error: 'Nom ou mot de passe incorrect',
-                network_error: 'Erreur réseau', login_success: 'Connecté',
-                check_in: 'Arrivée', check_out: 'Départ', break_start: 'Début pause', break_end: 'Fin pause',
-                record_ok: 'enregistré', record_fail: 'Échec', please_login: 'Connectez-vous d\'abord',
-                auto_text: 'Fermeture dans', auto_unit: 'sec', logout_ok: 'Déconnecté',
-                today_rec: 'Pointages du jour', no_rec: 'Aucun pointage',
-                notice_title: '⚠️ Règles de pointage',
-                notice_text: '4 pointages par jour requis pour un calcul précis.',
-                notice_warning: '⚠️ Tout pointage manqué = anomalie de présence !',
-                rule1: '✅ Arrivée', rule2: '☕ Pause début', rule3: '⚡ Pause fin', rule4: '🏠 Départ',
-                privacy_title: '🔒 Protection des données biométriques',
-                privacy_text1: 'ℹ️ Les données faciales sont utilisées uniquement pour le pointage. Non partagées avec des tiers. Vous pouvez demander la suppression à tout moment.',
-                privacy_tech: '📐 Technique : Stockage de vecteurs de caractéristiques 512D (données mathématiques), non des photos. Impossible de reconstruire le visage. Chiffrement intégral.',
-                privacy_text2: '✅ Engagement : Données supprimées après départ. Contactez l\'administrateur pour toute question.',
-                privacy_footer: 'Conforme au RGPD · Données chiffrées',
-                work_hours_normal: '✅ Fin de journée enregistrée, durée effective de travail aujourd\'hui : {hours} heures',
-        work_hours_need_review: '⚠️ Fin de journée enregistrée, mais la durée de travail effective n\'est que de {hours} heures. Une vérification sera effectuée.'
-            },
-            zh: {
-                 work_hours_normal: '✅ 下班打卡成功，今日有效工作时长 {hours} 小时',
-        work_hours_need_review: '⚠️ 下班打卡成功，但有效工作时长仅为 {hours} 小时，将提交审核',
-                app_name: '智能考勤系统', nav_attendance: '考勤', nav_register: '录入',
-                main_title: '🔐 认证中心', sub_title: '选择验证方式',
-                face_title: '人脸识别', face_desc: '刷脸快速打卡',
-                pwd_title: '密码登录', pwd_desc: '用户名+密码登录',
-                username_label: '用户名', password_label: '密码', login_btn: '登录',
-                back_choice: '← 返回', login_error: '用户名或密码错误',
-                network_error: '网络错误', login_success: '登录成功',
-                check_in: '上班打卡', check_out: '下班打卡', break_start: '休息开始', break_end: '休息结束',
-                record_ok: '成功', record_fail: '失败', please_login: '请先登录',
-                auto_text: '自动关闭倒计时', auto_unit: '秒', logout_ok: '已退出',
-                today_rec: '今日打卡记录', no_rec: '暂无记录',
-                notice_title: '⚠️ 重要考勤规则',
-                notice_text: '每日需要完成4次打卡，确保工时计算准确。',
-                notice_warning: '⚠️ 缺少打卡 = 出勤异常，请务必完成全部4次打卡！',
-                rule1: '✅ 上班打卡', rule2: '☕ 休息开始', rule3: '⚡ 休息结束', rule4: '🏠 下班打卡',
-                privacy_title: '🔒 隐私保护说明',
-                privacy_text1: 'ℹ️ 人脸特征仅用于考勤打卡，不会分享给第三方。您有权随时要求删除您的人脸数据。',
-                privacy_tech: '📐 技术说明：系统存储的是512维特征向量（数学化数据），而非原始人脸照片。特征向量无法逆向还原成人脸图像，生物识别数据经过加密保护。',
-                privacy_text2: '✅ 我们承诺：数据仅用于考勤，员工离职后数据将被自动删除。如有疑问，请联系管理员。',
-                privacy_footer: '符合个人信息保护法 · 数据加密存储'
-            },
-            en: {
-               work_hours_normal: '✅ Check-out successful. Today\'s effective work hours: {hours} hours',
-        work_hours_need_review: '⚠️ Check-out successful, but effective work hours are only {hours} hours. Will be reviewed.',
-                app_name: 'Smart Attendance System', nav_attendance: 'Attendance', nav_register: 'Register',
-                main_title: '🔐 Auth Center', sub_title: 'Choose your method',
-                face_title: 'Face Recognition', face_desc: 'Quick face check',
-                pwd_title: 'Password Login', pwd_desc: 'Username + password',
-                username_label: 'Username', password_label: 'Password', login_btn: 'Login',
-                back_choice: '← Back', login_error: 'Wrong username or password',
-                network_error: 'Network error', login_success: 'Logged in',
-                check_in: 'Check In', check_out: 'Check Out', break_start: 'Break Start', break_end: 'Break End',
-                record_ok: 'success', record_fail: 'Failed', please_login: 'Please login first',
-                auto_text: 'Auto close in', auto_unit: 'sec', logout_ok: 'Logged out',
-                today_rec: "Today's Records", no_rec: 'No records',
-                notice_title: '⚠️ Attendance Rules',
-                notice_text: '4 clock-ins per day required for accurate work hours.',
-                notice_warning: '⚠️ Missing any = attendance anomaly! Complete all 4!',
-                rule1: '✅ Check In', rule2: '☕ Break Start', rule3: '⚡ Break End', rule4: '🏠 Check Out',
-                privacy_title: '🔒 Privacy & Biometric Data',
-                privacy_text1: 'ℹ️ Facial features used only for attendance. Not shared with third parties. You may request deletion at any time.',
-                privacy_tech: '📐 Technical note: We store 512-dimension feature vectors (mathematical data), not original face photos. Vectors cannot be reversed into facial images. Fully encrypted.',
-                privacy_text2: '✅ Commitment: Data deleted upon departure. Contact admin with any concerns.',
-                privacy_footer: 'GDPR compliant · Encrypted storage'
-            }
-        };
-        
-        let lang = localStorage.getItem('language') || 'fr';
-        let currentUser = null;
-        let timer = null, countInt = null;
-        
-        function t(key, params) {
-            let text = dict[lang][key] || dict.fr[key] || key;
-            if (params) {
-                Object.keys(params).forEach(function(k) {
-                    text = text.replace('{' + k + '}', params[k]);
-                });
-            }
-            return text;
+  <script>
+    // ==================== 三语字典（包含隐私说明） ====================
+    const dict = {
+        fr: {
+            app_name: 'Système de Pointage Intelligent', nav_attendance: 'Pointage', nav_register: 'Enregistrement',
+            main_title: '🔐 Centre d\'authentification', sub_title: 'Choisissez votre méthode',
+            face_title: 'Reconnaissance faciale', face_desc: 'Vérification par visage',
+            pwd_title: 'Connexion mot de passe', pwd_desc: 'Nom + mot de passe',
+            username_label: 'Nom d\'utilisateur', password_label: 'Mot de passe', login_btn: 'Se connecter',
+            back_choice: '← Retour', login_error: 'Nom ou mot de passe incorrect',
+            network_error: 'Erreur réseau', login_success: 'Connecté',
+            check_in: 'Arrivée', check_out: 'Départ', break_start: 'Début pause', break_end: 'Fin pause',
+            record_ok: 'enregistré', record_fail: 'Échec', please_login: 'Connectez-vous d\'abord',
+            auto_text: 'Fermeture dans', auto_unit: 'sec', logout_ok: 'Déconnecté',
+            today_rec: 'Pointages du jour', no_rec: 'Aucun pointage',
+            notice_title: '⚠️ Règles de pointage',
+            notice_text: '4 pointages par jour requis pour un calcul précis.',
+            notice_warning: '⚠️ Tout pointage manqué = anomalie de présence !',
+            rule1: '✅ Arrivée', rule2: '☕ Pause début', rule3: '⚡ Pause fin', rule4: '🏠 Départ',
+            privacy_title: '🔒 Protection des données biométriques',
+            privacy_text1: 'ℹ️ Les données faciales sont utilisées uniquement pour le pointage. Non partagées avec des tiers. Vous pouvez demander la suppression à tout moment.',
+            privacy_tech: '📐 Technique : Stockage de vecteurs de caractéristiques 512D (données mathématiques), non des photos. Impossible de reconstruire le visage. Chiffrement intégral.',
+            privacy_text2: '✅ Engagement : Données supprimées après départ. Contactez l\'administrateur pour toute question.',
+            privacy_footer: 'Conforme au RGPD · Données chiffrées',
+            work_hours_normal: '✅ Fin de journée enregistrée, durée effective de travail aujourd\'hui : {hours} heures',
+            work_hours_need_review: '⚠️ Fin de journée enregistrée, mais la durée de travail effective n\'est que de {hours} heures. Une vérification sera effectuée.',
+            already_recorded: ' déjà enregistré, veuillez ne pas répéter',
+            must_check_in_first: 'Veuillez d\'abord pointer votre arrivée',
+            already_checked_out: 'Départ déjà enregistré aujourd\'hui',
+            must_break_start_first: 'Veuillez d\'abord commencer la pause',
+            break_already_ended: 'Pause déjà terminée aujourd\'hui',
+            must_end_break_first: 'Veuillez terminer la pause avant de partir'
+        },
+        zh: {
+            work_hours_normal: '✅ 下班打卡成功，今日有效工作时长 {hours} 小时',
+            work_hours_need_review: '⚠️ 下班打卡成功，但有效工作时长仅为 {hours} 小时，将提交审核',
+            app_name: '智能考勤系统', nav_attendance: '考勤', nav_register: '录入',
+            main_title: '🔐 认证中心', sub_title: '选择验证方式',
+            face_title: '人脸识别', face_desc: '刷脸快速打卡',
+            pwd_title: '密码登录', pwd_desc: '用户名+密码登录',
+            username_label: '用户名', password_label: '密码', login_btn: '登录',
+            back_choice: '← 返回', login_error: '用户名或密码错误',
+            network_error: '网络错误', login_success: '登录成功',
+            check_in: '上班打卡', check_out: '下班打卡', break_start: '休息开始', break_end: '休息结束',
+            record_ok: '成功', record_fail: '失败', please_login: '请先登录',
+            auto_text: '自动关闭倒计时', auto_unit: '秒', logout_ok: '已退出',
+            today_rec: '今日打卡记录', no_rec: '暂无记录',
+            notice_title: '⚠️ 重要考勤规则',
+            notice_text: '每日需要完成4次打卡，确保工时计算准确。',
+            notice_warning: '⚠️ 缺少打卡 = 出勤异常，请务必完成全部4次打卡！',
+            rule1: '✅ 上班打卡', rule2: '☕ 休息开始', rule3: '⚡ 休息结束', rule4: '🏠 下班打卡',
+            privacy_title: '🔒 隐私保护说明',
+            privacy_text1: 'ℹ️ 人脸特征仅用于考勤打卡，不会分享给第三方。您有权随时要求删除您的人脸数据。',
+            privacy_tech: '📐 技术说明：系统存储的是512维特征向量（数学化数据），而非原始人脸照片。特征向量无法逆向还原成人脸图像，生物识别数据经过加密保护。',
+            privacy_text2: '✅ 我们承诺：数据仅用于考勤，员工离职后数据将被自动删除。如有疑问，请联系管理员。',
+            privacy_footer: '符合个人信息保护法 · 数据加密存储',
+            already_recorded: ' 已打卡，请勿重复',
+            must_check_in_first: '请先进行上班打卡',
+            already_checked_out: '今日已完成下班打卡，无法继续打卡',
+            must_break_start_first: '请先开始休息',
+            break_already_ended: '今日休息已结束，无法再次开始',
+            must_end_break_first: '请先结束休息再下班'
+        },
+        en: {
+            work_hours_normal: '✅ Check-out successful. Today\'s effective work hours: {hours} hours',
+            work_hours_need_review: '⚠️ Check-out successful, but effective work hours are only {hours} hours. Will be reviewed.',
+            app_name: 'Smart Attendance System', nav_attendance: 'Attendance', nav_register: 'Register',
+            main_title: '🔐 Auth Center', sub_title: 'Choose your method',
+            face_title: 'Face Recognition', face_desc: 'Quick face check',
+            pwd_title: 'Password Login', pwd_desc: 'Username + password',
+            username_label: 'Username', password_label: 'Password', login_btn: 'Login',
+            back_choice: '← Back', login_error: 'Wrong username or password',
+            network_error: 'Network error', login_success: 'Logged in',
+            check_in: 'Check In', check_out: 'Check Out', break_start: 'Break Start', break_end: 'Break End',
+            record_ok: 'success', record_fail: 'Failed', please_login: 'Please login first',
+            auto_text: 'Auto close in', auto_unit: 'sec', logout_ok: 'Logged out',
+            today_rec: "Today's Records", no_rec: 'No records',
+            notice_title: '⚠️ Attendance Rules',
+            notice_text: '4 clock-ins per day required for accurate work hours.',
+            notice_warning: '⚠️ Missing any = attendance anomaly! Complete all 4!',
+            rule1: '✅ Check In', rule2: '☕ Break Start', rule3: '⚡ Break End', rule4: '🏠 Check Out',
+            privacy_title: '🔒 Privacy & Biometric Data',
+            privacy_text1: 'ℹ️ Facial features used only for attendance. Not shared with third parties. You may request deletion at any time.',
+            privacy_tech: '📐 Technical note: We store 512-dimension feature vectors (mathematical data), not original face photos. Vectors cannot be reversed into facial images. Fully encrypted.',
+            privacy_text2: '✅ Commitment: Data deleted upon departure. Contact admin with any concerns.',
+            privacy_footer: 'GDPR compliant · Encrypted storage',
+            already_recorded: ' already recorded, please do not repeat',
+            must_check_in_first: 'Please check in first',
+            already_checked_out: 'Already checked out today, cannot clock further',
+            must_break_start_first: 'Please start break first',
+            break_already_ended: 'Break already ended today, cannot start again',
+            must_end_break_first: 'Please end break before check out'
         }
-        
-        function updateUI() {
-            document.getElementById('appNameLogo').innerHTML = t('app_name');
-            document.getElementById('navAttendance').innerHTML = t('nav_attendance');
-            document.getElementById('navRegister').innerHTML = t('nav_register');
-            document.getElementById('mainTitle').innerHTML = t('main_title');
-            document.getElementById('subTitle').innerHTML = t('sub_title');
-            document.getElementById('faceTitle').innerHTML = t('face_title');
-            document.getElementById('faceDesc').innerHTML = t('face_desc');
-            document.getElementById('pwdTitle').innerHTML = t('pwd_title');
-            document.getElementById('pwdDesc').innerHTML = t('pwd_desc');
-            document.getElementById('usernameLabel').innerHTML = t('username_label');
-            document.getElementById('passwordLabel').innerHTML = t('password_label');
-            document.getElementById('loginBtn').innerHTML = t('login_btn');
-            document.getElementById('backToChoiceLink').innerHTML = t('back_choice');
-            document.getElementById('backToChoiceFromPunch').innerHTML = t('back_choice');
-            document.getElementById('checkInLabel').innerHTML = t('check_in');
-            document.getElementById('checkOutLabel').innerHTML = t('check_out');
-            document.getElementById('breakStartLabel').innerHTML = t('break_start');
-            document.getElementById('breakEndLabel').innerHTML = t('break_end');
-            document.getElementById('autoCloseText').innerHTML = t('auto_text');
-            document.getElementById('autoCloseUnit').innerHTML = t('auto_unit');
-            document.getElementById('todayRecordsTitle').innerHTML = t('today_rec');
-            document.getElementById('noRecordsText').innerHTML = t('no_rec');
-            // 考勤通知
-            document.getElementById('noticeTitle').innerHTML = t('notice_title');
-            document.getElementById('noticeText').innerHTML = t('notice_text');
-            document.getElementById('noticeWarning').innerHTML = t('notice_warning');
-            const rulesDiv = document.getElementById('noticeRules');
-            rulesDiv.innerHTML = `<span class="rule-chip">${t('rule1')}</span><span class="rule-chip">${t('rule2')}</span><span class="rule-chip">${t('rule3')}</span><span class="rule-chip">${t('rule4')}</span>`;
-            // 隐私通知
-            document.getElementById('privacyTitle').innerHTML = t('privacy_title');
-            document.getElementById('privacyText1').innerHTML = t('privacy_text1');
-            document.getElementById('privacyTechInfo').innerHTML = t('privacy_tech');
-            document.getElementById('privacyText2').innerHTML = t('privacy_text2');
-            document.getElementById('privacyFooter').innerHTML = t('privacy_footer');
-            
-            if (currentUser && !document.getElementById('punchContainer').classList.contains('hidden')) {
-                document.getElementById('authUserType').innerHTML = currentUser.user_type;
-            }
-        }
-        
-        function setLang(l) { lang = l; localStorage.setItem('language', l); updateUI(); document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.lang === l)); }
-        document.querySelectorAll('.lang-btn').forEach(btn => { btn.addEventListener('click', () => setLang(btn.dataset.lang)); if (btn.dataset.lang === lang) btn.classList.add('active'); });
-        
-        function stopTimer() { if (timer) clearTimeout(timer); if (countInt) clearInterval(countInt); timer = null; countInt = null; }
-        function startTimer() {
-            stopTimer();
-            let sec = 30;
-            const span = document.getElementById('countdownSeconds');
-            span.innerText = sec;
-            countInt = setInterval(() => { sec--; if (sec >= 0) span.innerText = sec; if (sec <= 0) clearInterval(countInt); }, 1000);
-            timer = setTimeout(() => { stopTimer(); handleLogout(); showMsg(t('auto_text') + ' - ' + t('logout_ok')); }, 30000);
-        }
-        function resetTimer() { if (currentUser && !document.getElementById('punchContainer').classList.contains('hidden')) { stopTimer(); startTimer(); } }
-        
-        function showMsg(msg, err = false) { 
-            const el = document.getElementById('statusMsg'); 
-            if (el) { el.innerText = msg; el.style.background = err ? '#fee2e2' : '#dcfce7'; el.style.color = err ? '#b91c1c' : '#166534'; setTimeout(() => el.innerText = '', 3000); } 
-        }
-        
-        async function loadRecords(uid) {
-            if (!uid) return;
-            const today = new Date().toISOString().split('T')[0];
-            const { data } = await supabase.from('attendance_records').select('*').eq('user_id', uid).eq('record_date', today).order('action_time');
-            const container = document.getElementById('todayRecordsList');
-            if (!data || !data.length) { container.innerHTML = `<div class="record-row">${t('no_rec')}</div>`; return; }
-            let html = '';
-            for (let r of data) {
-                let time = new Date(r.action_time).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
-                let act = t(r.action_type) || r.action_type;
-                html += `<div class="record-row"><span>${time}</span><span style="color:#667eea;">${act}</span></div>`;
-            }
-            container.innerHTML = html;
-        }
-       async function doRecord(type) {
-    if (!currentUser) { showMsg(t('please_login'), true); return; }
+    };
     
-    const today = new Date().toISOString().split('T')[0];
-    const now = new Date();
+    let lang = localStorage.getItem('language') || 'fr';
+    let currentUser = null;
+    let timer = null, countInt = null;
     
-    try {
-        // ========== 下班打卡：需要计算工作时长 ==========
-        if (type === 'check_out') {
-            // 1. 获取今天的上班打卡时间
-            const { data: checkIn } = await supabase
-                .from('attendance_records')
-                .select('action_time')
-                .eq('user_id', currentUser.id)
-                .eq('record_date', today)
-                .eq('action_type', 'check_in')
-                .order('action_time', { ascending: true })
-                .limit(1);
-            
-            // 2. 获取今天的休息记录
-            const { data: breaks } = await supabase
+    function t(key, params) {
+        let text = dict[lang][key] || dict.fr[key] || key;
+        if (params) {
+            Object.keys(params).forEach(function(k) {
+                text = text.replace('{' + k + '}', params[k]);
+            });
+        }
+        return text;
+    }
+    
+    function updateUI() {
+        document.getElementById('appNameLogo').innerHTML = t('app_name');
+        document.getElementById('navAttendance').innerHTML = t('nav_attendance');
+        document.getElementById('navRegister').innerHTML = t('nav_register');
+        document.getElementById('mainTitle').innerHTML = t('main_title');
+        document.getElementById('subTitle').innerHTML = t('sub_title');
+        document.getElementById('faceTitle').innerHTML = t('face_title');
+        document.getElementById('faceDesc').innerHTML = t('face_desc');
+        document.getElementById('pwdTitle').innerHTML = t('pwd_title');
+        document.getElementById('pwdDesc').innerHTML = t('pwd_desc');
+        document.getElementById('usernameLabel').innerHTML = t('username_label');
+        document.getElementById('passwordLabel').innerHTML = t('password_label');
+        document.getElementById('loginBtn').innerHTML = t('login_btn');
+        document.getElementById('backToChoiceLink').innerHTML = t('back_choice');
+        document.getElementById('backToChoiceFromPunch').innerHTML = t('back_choice');
+        document.getElementById('checkInLabel').innerHTML = t('check_in');
+        document.getElementById('checkOutLabel').innerHTML = t('check_out');
+        document.getElementById('breakStartLabel').innerHTML = t('break_start');
+        document.getElementById('breakEndLabel').innerHTML = t('break_end');
+        document.getElementById('autoCloseText').innerHTML = t('auto_text');
+        document.getElementById('autoCloseUnit').innerHTML = t('auto_unit');
+        document.getElementById('todayRecordsTitle').innerHTML = t('today_rec');
+        document.getElementById('noRecordsText').innerHTML = t('no_rec');
+        document.getElementById('noticeTitle').innerHTML = t('notice_title');
+        document.getElementById('noticeText').innerHTML = t('notice_text');
+        document.getElementById('noticeWarning').innerHTML = t('notice_warning');
+        const rulesDiv = document.getElementById('noticeRules');
+        rulesDiv.innerHTML = `<span class="rule-chip">${t('rule1')}</span><span class="rule-chip">${t('rule2')}</span><span class="rule-chip">${t('rule3')}</span><span class="rule-chip">${t('rule4')}</span>`;
+        document.getElementById('privacyTitle').innerHTML = t('privacy_title');
+        document.getElementById('privacyText1').innerHTML = t('privacy_text1');
+        document.getElementById('privacyTechInfo').innerHTML = t('privacy_tech');
+        document.getElementById('privacyText2').innerHTML = t('privacy_text2');
+        document.getElementById('privacyFooter').innerHTML = t('privacy_footer');
+        
+        if (currentUser && !document.getElementById('punchContainer').classList.contains('hidden')) {
+            document.getElementById('authUserType').innerHTML = currentUser.user_type;
+        }
+    }
+    
+    function setLang(l) { lang = l; localStorage.setItem('language', l); updateUI(); document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.lang === l)); }
+    document.querySelectorAll('.lang-btn').forEach(btn => { btn.addEventListener('click', () => setLang(btn.dataset.lang)); if (btn.dataset.lang === lang) btn.classList.add('active'); });
+    
+    function stopTimer() { if (timer) clearTimeout(timer); if (countInt) clearInterval(countInt); timer = null; countInt = null; }
+    function startTimer() {
+        stopTimer();
+        let sec = 30;
+        const span = document.getElementById('countdownSeconds');
+        span.innerText = sec;
+        countInt = setInterval(() => { sec--; if (sec >= 0) span.innerText = sec; if (sec <= 0) clearInterval(countInt); }, 1000);
+        timer = setTimeout(() => { stopTimer(); handleLogout(); showMsg(t('auto_text') + ' - ' + t('logout_ok')); }, 30000);
+    }
+    function resetTimer() { if (currentUser && !document.getElementById('punchContainer').classList.contains('hidden')) { stopTimer(); startTimer(); } }
+    
+    function showMsg(msg, err = false) { 
+        const el = document.getElementById('statusMsg'); 
+        if (el) { el.innerText = msg; el.style.background = err ? '#fee2e2' : '#dcfce7'; el.style.color = err ? '#b91c1c' : '#166534'; setTimeout(() => el.innerText = '', 3000); } 
+    }
+    
+    async function loadRecords(uid) {
+        if (!uid) return;
+        const today = new Date().toISOString().split('T')[0];
+        const { data } = await supabase.from('attendance_records').select('*').eq('user_id', uid).eq('record_date', today).order('action_time');
+        const container = document.getElementById('todayRecordsList');
+        if (!data || !data.length) { container.innerHTML = `<div class="record-row">${t('no_rec')}</div>`; return; }
+        let html = '';
+        for (let r of data) {
+            let time = new Date(r.action_time).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+            let act = t(r.action_type) || r.action_type;
+            html += `<div class="record-row"><span>${time}</span><span style="color:#667eea;">${act}</span></div>`;
+        }
+        container.innerHTML = html;
+    }
+    
+    async function doRecord(type) {
+        if (!currentUser) { showMsg(t('please_login'), true); return; }
+        
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        
+        try {
+            // ========== 获取今天所有打卡记录 ==========
+            const { data: todayRecords, error: fetchError } = await supabase
                 .from('attendance_records')
                 .select('action_type, action_time')
                 .eq('user_id', currentUser.id)
                 .eq('record_date', today)
-                .in('action_type', ['break_start', 'break_end']);
+                .order('action_time', { ascending: true });
             
-            // 计算休息总分钟数
-            let breakMinutes = 0;
-            let lastStart = null;
-            for (const record of breaks || []) {
-                if (record.action_type === 'break_start') {
-                    lastStart = new Date(record.action_time);
-                } else if (record.action_type === 'break_end' && lastStart) {
-                    breakMinutes += (new Date(record.action_time) - lastStart) / (1000 * 60);
-                    lastStart = null;
-                }
+            if (fetchError) throw fetchError;
+            
+            // ========== 检查是否已存在同类型打卡 ==========
+            const existingRecord = todayRecords?.find(r => r.action_type === type);
+            if (existingRecord) {
+                showMsg(`${t(type)}${t('already_recorded')}`, true);
+                return;
             }
             
-            let workHours = null;
-            let needReview = false;
-            let status = 'normal';
+            // ========== 顺序控制 ==========
+            const hasCheckIn = todayRecords?.some(r => r.action_type === 'check_in');
+            const hasBreakStart = todayRecords?.some(r => r.action_type === 'break_start');
+            const hasBreakEnd = todayRecords?.some(r => r.action_type === 'break_end');
+            const hasCheckOut = todayRecords?.some(r => r.action_type === 'check_out');
             
-            if (checkIn && checkIn.length > 0) {
-                const checkInTime = new Date(checkIn[0].action_time);
-                let diffMs = now - checkInTime;
-                // 扣除休息时间
-                diffMs -= breakMinutes * 60 * 1000;
-                workHours = diffMs / (1000 * 60 * 60);
-                workHours = Math.round(workHours * 10) / 10;
+            // 规则1: 必须先进行上班打卡
+            if (type !== 'check_in' && !hasCheckIn) {
+                showMsg(t('must_check_in_first'), true);
+                return;
+            }
+            
+            // 规则2: 下班打卡后不能再打卡
+            if (hasCheckOut && type !== 'check_in') {
+                showMsg(t('already_checked_out'), true);
+                return;
+            }
+            
+            // 规则3: 休息开始必须在上班打卡之后
+            if (type === 'break_start' && !hasCheckIn) {
+                showMsg(t('must_check_in_first'), true);
+                return;
+            }
+            
+            // 规则4: 休息结束必须在休息开始之后
+            if (type === 'break_end' && !hasBreakStart) {
+                showMsg(t('must_break_start_first'), true);
+                return;
+            }
+            
+            // 规则5: 休息结束后不能再开始休息
+            if (type === 'break_start' && hasBreakEnd) {
+                showMsg(t('break_already_ended'), true);
+                return;
+            }
+            
+            // 规则6: 休息未结束不能下班
+            if (type === 'check_out' && hasBreakStart && !hasBreakEnd) {
+                showMsg(t('must_end_break_first'), true);
+                return;
+            }
+            // ========== 顺序控制结束 ==========
+            
+            // ========== 下班打卡：需要计算工作时长 ==========
+            if (type === 'check_out') {
+                // 获取今天的上班打卡时间
+                const { data: checkIn } = await supabase
+                    .from('attendance_records')
+                    .select('action_time')
+                    .eq('user_id', currentUser.id)
+                    .eq('record_date', today)
+                    .eq('action_type', 'check_in')
+                    .order('action_time', { ascending: true })
+                    .limit(1);
                 
-                // 工作时长不足8小时 → 标记异常
-                if (workHours < 8) {
+                // 获取今天的休息记录
+                const { data: breaks } = await supabase
+                    .from('attendance_records')
+                    .select('action_type, action_time')
+                    .eq('user_id', currentUser.id)
+                    .eq('record_date', today)
+                    .in('action_type', ['break_start', 'break_end']);
+                
+                // 计算休息总分钟数
+                let breakMinutes = 0;
+                let lastStart = null;
+                for (const record of breaks || []) {
+                    if (record.action_type === 'break_start') {
+                        lastStart = new Date(record.action_time);
+                    } else if (record.action_type === 'break_end' && lastStart) {
+                        breakMinutes += (new Date(record.action_time) - lastStart) / (1000 * 60);
+                        lastStart = null;
+                    }
+                }
+                
+                let workHours = null;
+                let needReview = false;
+                let status = 'normal';
+                
+                if (checkIn && checkIn.length > 0) {
+                    const checkInTime = new Date(checkIn[0].action_time);
+                    let diffMs = now - checkInTime;
+                    diffMs -= breakMinutes * 60 * 1000;
+                    workHours = diffMs / (1000 * 60 * 60);
+                    workHours = Math.round(workHours * 10) / 10;
+                    
+                    if (workHours < 8) {
+                        needReview = true;
+                        status = 'abnormal';
+                    }
+                } else {
                     needReview = true;
                     status = 'abnormal';
+                    workHours = 0;
                 }
+                
+                await supabase.from('attendance_records').insert([{
+                    user_id: currentUser.id,
+                    username: currentUser.username,
+                    user_type: currentUser.user_type,
+                    action_type: type,
+                    record_date: today,
+                    action_time: now.toISOString(),
+                    is_valid: true,
+                    status: status,
+                    need_review: needReview,
+                    work_hours: workHours
+                }]);
+                
+                if (needReview) {
+                    showMsg(t('work_hours_need_review', { hours: workHours }), false);
+                } else {
+                    showMsg(t('work_hours_normal', { hours: workHours }), false);
+                }
+                
             } else {
-                // 没有上班打卡记录 → 异常
-                needReview = true;
-                status = 'abnormal';
-                workHours = 0;
+                // ========== 上班打卡 / 休息开始 / 休息结束 ==========
+                await supabase.from('attendance_records').insert([{
+                    user_id: currentUser.id,
+                    username: currentUser.username,
+                    user_type: currentUser.user_type,
+                    action_type: type,
+                    record_date: today,
+                    action_time: now.toISOString(),
+                    is_valid: true,
+                    status: 'normal',
+                    need_review: false,
+                    work_hours: null
+                }]);
+                showMsg(`${t(type)} ${t('record_ok')}`);
             }
             
-            // 插入下班打卡记录
-            await supabase.from('attendance_records').insert([{
-                user_id: currentUser.id,
-                username: currentUser.username,
-                user_type: currentUser.user_type,
-                action_type: type,
-                record_date: today,
-                action_time: now.toISOString(),
-                is_valid: true,
-                status: status,
-                need_review: needReview,
-                work_hours: workHours
-            }]);
+            await loadRecords(currentUser.id);
+            resetTimer();
             
-            // 显示提示（三语）
-            if (needReview) {
-                showMsg(t('work_hours_need_review', { hours: workHours }), false);
-            } else {
-                showMsg(t('work_hours_normal', { hours: workHours }), false);
-            }
-            
-        } else {
-            // ========== 上班打卡 / 休息开始 / 休息结束：直接记录 ==========
-            await supabase.from('attendance_records').insert([{
-                user_id: currentUser.id,
-                username: currentUser.username,
-                user_type: currentUser.user_type,
-                action_type: type,
-                record_date: today,
-                action_time: now.toISOString(),
-                is_valid: true,
-                status: 'normal',
-                need_review: false,
-                work_hours: null
-            }]);
-            showMsg(`${t(type)} ${t('record_ok')}`);
+        } catch(e) { 
+            console.error('打卡失败:', e);
+            showMsg(t('record_fail'), true); 
         }
-        
-        // 刷新记录列表
-        await loadRecords(currentUser.id);
-        resetTimer();
-        
-    } catch(e) { 
-        console.error('打卡失败:', e);
-        showMsg(t('record_fail'), true); 
     }
-}
-
-async function doLogin() {
-            const user = document.getElementById('pwdUsername').value.trim();
-            const pwd = document.getElementById('pwdPassword').value.trim();
-            const errDiv = document.getElementById('errorMsg');
-            if (!user || !pwd) { errDiv.style.display = 'block'; errDiv.innerText = t('login_error'); return; }
-            const { data } = await supabase.from('users').select('id,username,user_type').eq('username', user).eq('password', pwd);
-            if (data && data.length) {
-                currentUser = data[0];
-                sessionStorage.setItem('attendance_session', JSON.stringify(currentUser));
-                sessionStorage.setItem('session', JSON.stringify(currentUser));
-                errDiv.style.display = 'none';
-                document.getElementById('loginFormContainer').classList.add('hidden');
-                document.getElementById('punchContainer').classList.remove('hidden');
-                document.getElementById('authUserName').innerText = currentUser.username;
-                document.getElementById('authUserType').innerText = currentUser.user_type;
-                document.getElementById('authUserAvatar').innerText = currentUser.username.charAt(0).toUpperCase();
-                await loadRecords(currentUser.id);
-                showMsg(t('login_success'));
-                startTimer();
-            } else { errDiv.style.display = 'block'; errDiv.innerText = t('login_error'); }
-        }
-        
-        function handleLogout() {
-            stopTimer();
-            currentUser = null;
-            sessionStorage.removeItem('attendance_session');
-            sessionStorage.removeItem('session');
-            document.getElementById('punchContainer').classList.add('hidden');
-            document.getElementById('choiceCards').classList.remove('hidden');
+    
+    async function doLogin() {
+        const user = document.getElementById('pwdUsername').value.trim();
+        const pwd = document.getElementById('pwdPassword').value.trim();
+        const errDiv = document.getElementById('errorMsg');
+        if (!user || !pwd) { errDiv.style.display = 'block'; errDiv.innerText = t('login_error'); return; }
+        const { data } = await supabase.from('users').select('id,username,user_type').eq('username', user).eq('password', pwd);
+        if (data && data.length) {
+            currentUser = data[0];
+            sessionStorage.setItem('attendance_session', JSON.stringify(currentUser));
+            sessionStorage.setItem('session', JSON.stringify(currentUser));
+            errDiv.style.display = 'none';
             document.getElementById('loginFormContainer').classList.add('hidden');
-            document.getElementById('pwdUsername').value = '';
-            document.getElementById('pwdPassword').value = '';
-            document.getElementById('errorMsg').style.display = 'none';
-            showMsg(t('logout_ok'));
-        }
-        
-        function goFace() { window.location.href = 'face.html'; }
-        function showLogin() { document.getElementById('choiceCards').classList.add('hidden'); document.getElementById('loginFormContainer').classList.remove('hidden'); }
-        function showCards() { document.getElementById('choiceCards').classList.remove('hidden'); document.getElementById('loginFormContainer').classList.add('hidden'); document.getElementById('punchContainer').classList.add('hidden'); stopTimer(); }
-        
-        document.getElementById('cardFace').onclick = goFace;
-        document.getElementById('cardPwd').onclick = showLogin;
-        document.getElementById('backToChoiceLink').onclick = showCards;
-        document.getElementById('backToChoiceFromPunch').onclick = showCards;
-        document.getElementById('loginBtn').onclick = doLogin;
-        document.getElementById('logoutBtn').onclick = handleLogout;
-        document.getElementById('quickCheckIn').onclick = () => doRecord('check_in');
-        document.getElementById('quickCheckOut').onclick = () => doRecord('check_out');
-        document.getElementById('quickBreakStart').onclick = () => doRecord('break_start');
-        document.getElementById('quickBreakEnd').onclick = () => doRecord('break_end');
-        document.getElementById('pwdUsername').addEventListener('keypress', e => { if(e.key === 'Enter') doLogin(); });
-        document.getElementById('pwdPassword').addEventListener('keypress', e => { if(e.key === 'Enter') doLogin(); });
-        
-        updateUI();
-    </script>
+            document.getElementById('punchContainer').classList.remove('hidden');
+            document.getElementById('authUserName').innerText = currentUser.username;
+            document.getElementById('authUserType').innerText = currentUser.user_type;
+            document.getElementById('authUserAvatar').innerText = currentUser.username.charAt(0).toUpperCase();
+            await loadRecords(currentUser.id);
+            showMsg(t('login_success'));
+            startTimer();
+        } else { errDiv.style.display = 'block'; errDiv.innerText = t('login_error'); }
+    }
+    
+    function handleLogout() {
+        stopTimer();
+        currentUser = null;
+        sessionStorage.removeItem('attendance_session');
+        sessionStorage.removeItem('session');
+        document.getElementById('punchContainer').classList.add('hidden');
+        document.getElementById('choiceCards').classList.remove('hidden');
+        document.getElementById('loginFormContainer').classList.add('hidden');
+        document.getElementById('pwdUsername').value = '';
+        document.getElementById('pwdPassword').value = '';
+        document.getElementById('errorMsg').style.display = 'none';
+        showMsg(t('logout_ok'));
+    }
+    
+    function goFace() { window.location.href = 'face.html'; }
+    function showLogin() { document.getElementById('choiceCards').classList.add('hidden'); document.getElementById('loginFormContainer').classList.remove('hidden'); }
+    function showCards() { document.getElementById('choiceCards').classList.remove('hidden'); document.getElementById('loginFormContainer').classList.add('hidden'); document.getElementById('punchContainer').classList.add('hidden'); stopTimer(); }
+    
+    document.getElementById('cardFace').onclick = goFace;
+    document.getElementById('cardPwd').onclick = showLogin;
+    document.getElementById('backToChoiceLink').onclick = showCards;
+    document.getElementById('backToChoiceFromPunch').onclick = showCards;
+    document.getElementById('loginBtn').onclick = doLogin;
+    document.getElementById('logoutBtn').onclick = handleLogout;
+    document.getElementById('quickCheckIn').onclick = () => doRecord('check_in');
+    document.getElementById('quickCheckOut').onclick = () => doRecord('check_out');
+    document.getElementById('quickBreakStart').onclick = () => doRecord('break_start');
+    document.getElementById('quickBreakEnd').onclick = () => doRecord('break_end');
+    document.getElementById('pwdUsername').addEventListener('keypress', e => { if(e.key === 'Enter') doLogin(); });
+    document.getElementById('pwdPassword').addEventListener('keypress', e => { if(e.key === 'Enter') doLogin(); });
+    
+    updateUI();
+</script>
 </body>
 </html>

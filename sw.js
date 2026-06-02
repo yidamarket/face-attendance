@@ -1,5 +1,5 @@
 // sw.js - 缓存 face-api 模型文件
-const CACHE_NAME = 'face-models-v4';
+const CACHE_NAME = 'face-models-v4.1';
 
 // 匹配所有 face-api 模型文件的正则
 const MODEL_PATTERNS = [
